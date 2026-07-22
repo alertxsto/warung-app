@@ -36,6 +36,7 @@ ATAU jika ada aksi:
   "action": {
     "type": "update_stock",
     "product_id": <nomor ID produk>,
+    "product_name": "<nama produk>",
     "stock_delta": <angka positif=tambah, negatif=kurang>
   }
 }
@@ -125,21 +126,47 @@ Omset bulan ini: ${formatRupiah(stats.monthRevenue)}`;
 
 export const sendToAi = sendToGroq;
 
-/**
- * Eksekusi aksi dari AI ke database
- */
 export const executeAiAction = async (action, products) => {
   if (!action || !action.type) return null;
 
   if (action.type === 'update_stock') {
-    const product = products.find(p => p.id === action.product_id);
-    if (!product) return 'Produk tidak ditemukan.';
+    let productList = products;
+    if (!productList || productList.length === 0) {
+      productList = await getProducts();
+    }
+    let product = null;
 
-    const newStock = Math.max(0, product.stock + action.stock_delta);
+    // 1. Cari berdasarkan product_id (support number, string "1", atau "ID:1")
+    if (action.product_id !== undefined && action.product_id !== null) {
+      const rawIdStr = String(action.product_id).trim();
+      const numericId = parseInt(rawIdStr.replace(/\D/g, ''), 10);
+
+      product = productList.find(p =>
+        p.id === action.product_id ||
+        p.id === numericId ||
+        String(p.id) === rawIdStr
+      );
+    }
+
+    // 2. Fallback: Cari berdasarkan nama produk (fuzzy search) jika product_id tidak ketemu
+    if (!product && (action.product_name || action.product_id)) {
+      const query = String(action.product_name || action.product_id).toLowerCase().trim();
+      product = productList.find(p => {
+        const nameLower = p.name.toLowerCase();
+        return nameLower.includes(query) || query.includes(nameLower);
+      });
+    }
+
+    if (!product) {
+      return `⚠️ Gagal update stok: Produk tidak ditemukan di database.`;
+    }
+
+    const delta = Number(action.stock_delta || 0);
+    const newStock = Math.max(0, product.stock + delta);
     await updateProduct(product.id, { ...product, stock: newStock });
 
-    const verb = action.stock_delta > 0 ? 'ditambah' : 'dikurangi';
-    return `Stok ${product.name} berhasil ${verb} ${Math.abs(action.stock_delta)} ${product.unit || 'pcs'}. Sekarang: ${newStock} ${product.unit || 'pcs'}`;
+    const verb = delta > 0 ? 'ditambah' : 'dikurangi';
+    return `Stok ${product.name} berhasil ${verb} ${Math.abs(delta)} ${product.unit || 'pcs'}. Sekarang: ${newStock} ${product.unit || 'pcs'}`;
   }
 
   return null;
