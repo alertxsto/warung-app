@@ -155,11 +155,6 @@ const ProductList = ({ navigation }) => {
 
     return (
       <View style={[styles.card, isOut && styles.cardOut, isLow && styles.cardLow]}>
-        <View style={[
-          styles.cardAccent,
-          { backgroundColor: isOut ? colors.dangerText : isLow ? colors.warningText : colors.primary }
-        ]} />
-
         <View style={styles.cardBody}>
           {/* Top row */}
           <View style={styles.cardTop}>
@@ -489,14 +484,13 @@ const styles = StyleSheet.create({
 
   // Product Card
   card: {
-    flexDirection: 'row', backgroundColor: colors.cardBg, borderRadius: 24, marginBottom: 12,
-    overflow: 'hidden', shadowColor: colors.shadow, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08, shadowRadius: 8, elevation: 4,
-    borderWidth: 1, borderColor: 'rgba(0,0,0,0.03)'
+    backgroundColor: colors.cardBg, borderRadius: 20, marginBottom: 12,
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
+    borderWidth: 1, borderColor: colors.border + '60'
   },
   cardOut: { opacity: 0.75, backgroundColor: '#FAFAFA' },
   cardLow: { borderWidth: 1.5, borderColor: '#FFE082' },
-  cardAccent: { width: 6 },
   cardBody: { flex: 1, padding: 16 },
 
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },

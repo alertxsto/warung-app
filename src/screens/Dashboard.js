@@ -29,7 +29,6 @@ const MenuButton = ({ icon, label, sublabel, color, onPress, fullWidth, compact 
       styles.menuBtn,
       fullWidth && styles.menuBtnFull,
       compact && styles.menuBtnCompact,
-      { borderLeftColor: color, borderLeftWidth: 5 }
     ]}
     onPress={onPress}
     activeOpacity={0.75}
@@ -450,13 +449,13 @@ const styles = StyleSheet.create({
     padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
-    borderLeftWidth: 5,
-    borderLeftColor: colors.warningText,
+    borderWidth: 1,
+    borderColor: '#FFE0B2',
     shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07,
+    shadowOpacity: 0.05,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   alertBannerIconContainer: {
     width: 44, height: 44, borderRadius: 22,
@@ -569,8 +568,9 @@ const styles = StyleSheet.create({
   menuBtn: {
     backgroundColor: colors.cardBg, borderRadius: 16, padding: 14,
     flexDirection: 'row', alignItems: 'center', marginBottom: 10,
+    borderWidth: 1, borderColor: colors.border + '60',
     shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07, shadowRadius: 5, elevation: 3,
+    shadowOpacity: 0.05, shadowRadius: 5, elevation: 2,
   },
   menuBtnFull: { marginHorizontal: 16 },
   menuBtnCompact: { flex: 1, marginBottom: 0, paddingVertical: 12 },

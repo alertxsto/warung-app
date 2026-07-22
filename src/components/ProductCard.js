@@ -21,9 +21,6 @@ const ProductCard = ({ product, onPress }) => {
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress} activeOpacity={0.78}>
-      {/* Left accent bar */}
-      <View style={[styles.accentBar, { backgroundColor: accentColor }]} />
-
       <View style={styles.body}>
         {/* Header */}
         <View style={styles.header}>
@@ -75,16 +72,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardBg,
     borderRadius: 16,
     marginBottom: 10,
-    flexDirection: 'row',
-    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: colors.border + '60',
     shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  accentBar: {
-    width: 5,
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 2,
   },
   body: {
     flex: 1,

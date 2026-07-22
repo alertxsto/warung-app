@@ -83,7 +83,6 @@ const DailyTab = () => {
 
     return (
       <View style={styles.txCard}>
-        <View style={styles.txCardAccent} />
         <View style={styles.txCardBody}>
           <View style={styles.txCardTop}>
             <View style={styles.txBadge}>
@@ -328,7 +327,6 @@ const MonthlyTab = () => {
     const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
     return (
       <View style={styles.txCard}>
-        <View style={[styles.txCardAccent, { backgroundColor: '#7B1FA2' }]} />
         <View style={styles.txCardBody}>
           <View style={styles.txCardTop}>
             <View style={[styles.txBadge, { backgroundColor: '#EDE7F6' }]}>
@@ -694,11 +692,11 @@ const styles = StyleSheet.create({
 
   // Transaction Card
   txCard: {
-    flexDirection: 'row', backgroundColor: colors.cardBg, borderRadius: 16, marginBottom: 10,
-    overflow: 'hidden', elevation: 2, shadowColor: colors.shadow,
+    backgroundColor: colors.cardBg, borderRadius: 16, marginBottom: 10,
+    borderWidth: 1, borderColor: colors.border + '60',
+    elevation: 2, shadowColor: colors.shadow,
     shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4,
   },
-  txCardAccent: { width: 5, backgroundColor: colors.primary },
   txCardBody: { flex: 1, padding: 12 },
   txCardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 },
   txBadge: { backgroundColor: colors.surface, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
