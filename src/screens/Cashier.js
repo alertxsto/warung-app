@@ -501,7 +501,7 @@ const Cashier = ({ navigation }) => {
 
       {/* Konfirmasi Pembayaran Modal */}
       <Modal visible={confirmModalVisible} animationType="fade" transparent={true}>
-        <View style={styles.modalOverlay}>
+        <View style={styles.confirmOverlay}>
           <View style={styles.confirmModal}>
             <View style={styles.confirmHeader}>
               <View style={[styles.confirmIconCircle, { backgroundColor: colors.success + '30' }]}>
@@ -774,6 +774,11 @@ const styles = StyleSheet.create({
   },
   toastText: { color: colors.white, fontSize: 13, fontWeight: '700' },
 
+  confirmOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center', alignItems: 'center',
+    paddingHorizontal: 16,
+  },
   confirmModal: {
     backgroundColor: colors.background,
     marginHorizontal: 16,
