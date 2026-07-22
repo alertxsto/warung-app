@@ -6,7 +6,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { getProducts, updateProduct } from '../database/db';
+import { getProducts, updateProduct, deleteProduct } from '../database/db';
 import { colors } from '../theme/colors';
 import { formatRupiah } from '../utils/calculations';
 
@@ -70,6 +70,29 @@ const ProductList = ({ navigation }) => {
   const handleQuickStock = (product) => {
     setSelectedProduct(product);
     setQuickStockModal(true);
+  };
+
+  const handleDeleteProduct = (product) => {
+    if (!product) return;
+    Alert.alert(
+      'Hapus Barang',
+      `Yakin ingin menghapus "${product.name}"?\n\nTindakan ini tidak dapat dibatalkan.`,
+      [
+        { text: 'Batal', style: 'cancel' },
+        {
+          text: 'Ya, Hapus', style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteProduct(product.id);
+              setQuickStockModal(false);
+              loadProducts();
+            } catch {
+              Alert.alert('Error', 'Gagal menghapus data');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const changeStock = async (delta) => {
@@ -413,6 +436,14 @@ const ProductList = ({ navigation }) => {
                     <Text style={[styles.qsBtnText, styles.qsBtnTextPlus]}>+5</Text>
                   </TouchableOpacity>
                </View>
+
+               <TouchableOpacity 
+                 style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFEBEE', paddingVertical: 12, borderRadius: 12, marginTop: 10, borderWidth: 1, borderColor: '#FFCDD2' }}
+                 onPress={() => handleDeleteProduct(selectedProduct)}
+               >
+                 <Ionicons name="trash-outline" size={18} color={colors.dangerText} style={{ marginRight: 6 }} />
+                 <Text style={{ fontSize: 14, fontWeight: '800', color: colors.dangerText }}>Hapus Barang Ini</Text>
+               </TouchableOpacity>
             </View>
           </TouchableOpacity>
         </TouchableOpacity>

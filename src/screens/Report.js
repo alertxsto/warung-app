@@ -10,6 +10,7 @@ import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { getMonthlyReport, getDailyReport, getTopProducts, getMonthComparison, exportBackup, importBackup, cancelTransaction } from '../database/db';
 import { formatRupiah } from '../utils/calculations';
+import { generateTransactionsCSV } from '../utils/csvExporter';
 import { colors } from '../theme/colors';
 
 const MONTH_NAMES = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
@@ -502,6 +503,32 @@ const Report = ({ navigation }) => {
     );
   };
 
+  const handleExportCSV = async () => {
+    try {
+      const data = activeTab === 'daily' ? dailyData : monthlyData;
+      if (!data || !data.transactions || data.transactions.length === 0) {
+        Alert.alert('Tidak Ada Data', 'Tidak ada data transaksi untuk diekspor ke CSV.');
+        return;
+      }
+      const csvStr = generateTransactionsCSV(data.transactions);
+      const filename = `laporan_warung_${activeTab}_${Date.now()}.csv`;
+      const fileUri = FileSystem.documentDirectory + filename;
+      await FileSystem.writeAsStringAsync(fileUri, csvStr, { encoding: 'utf8' });
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'text/csv',
+          dialogTitle: 'Simpan / Bagikan Laporan CSV Excel',
+        });
+      } else {
+        Alert.alert('File CSV Tersimpan', `Laporan disimpan di:\n${filename}`);
+      }
+    } catch (e) {
+      Alert.alert('Gagal Ekspor CSV', e.message);
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Premium Header */}
@@ -526,18 +553,23 @@ const Report = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Backup & Restore Bar */}
+      {/* Backup & Restore & Export CSV Bar */}
       <View style={styles.backupBar}>
         <TouchableOpacity style={styles.backupBtn} onPress={handleBackup} disabled={backupLoading}>
-          <Ionicons name="download-outline" size={18} color={colors.successText} />
+          <Ionicons name="download-outline" size={16} color={colors.successText} />
           <Text style={[styles.backupBtnText, { color: colors.successText }]}>
-            {backupLoading ? 'Mengekspor...' : 'Ekspor Backup'}
+            {backupLoading ? 'Export...' : 'Backup JSON'}
           </Text>
         </TouchableOpacity>
-        <View style={{ width: 1, height: 24, backgroundColor: colors.divider }} />
+        <View style={{ width: 1, height: 20, backgroundColor: colors.divider }} />
+        <TouchableOpacity style={styles.backupBtn} onPress={handleExportCSV}>
+          <Ionicons name="document-text-outline" size={16} color={colors.primary} />
+          <Text style={[styles.backupBtnText, { color: colors.primary }]}>Ekspor CSV</Text>
+        </TouchableOpacity>
+        <View style={{ width: 1, height: 20, backgroundColor: colors.divider }} />
         <TouchableOpacity style={styles.backupBtn} onPress={handleRestore}>
-          <Ionicons name="cloud-download-outline" size={18} color={colors.warningText} />
-          <Text style={[styles.backupBtnText, { color: colors.warningText }]}>Pulihkan Data</Text>
+          <Ionicons name="cloud-download-outline" size={16} color={colors.warningText} />
+          <Text style={[styles.backupBtnText, { color: colors.warningText }]}>Pulihkan</Text>
         </TouchableOpacity>
       </View>
 

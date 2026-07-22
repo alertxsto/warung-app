@@ -1,11 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Modal, Alert, ScrollView, TextInput, StatusBar, Platform
+  Modal, Alert, ScrollView, TextInput, StatusBar, Platform, Linking, Keyboard
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Sharing from 'expo-sharing';
 import { getProducts, addTransaction } from '../database/db';
 import { formatRupiah } from '../utils/calculations';
 import { colors } from '../theme/colors';
@@ -20,6 +21,10 @@ const Cashier = ({ navigation }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Struk Modal State
+  const [receiptModal, setReceiptModal] = useState(false);
+  const [lastTxData, setLastTxData] = useState(null);
 
   const loadProducts = async () => {
     const data = await getProducts();
@@ -102,15 +107,53 @@ const Cashier = ({ navigation }) => {
     }
     setLoading(true);
     try {
-      await addTransaction(cart, totalAmount, totalModal, profit);
-      Alert.alert('Transaksi Berhasil', `Kembalian: ${formatRupiah(change)}`, [
-        { text: 'OK', onPress: () => { setCart([]); setReceivedMoney(''); } }
-      ]);
+      const txId = await addTransaction(cart, totalAmount, totalModal, profit);
+      
+      // Simpan data transaksi untuk nota
+      setLastTxData({
+        id: txId,
+        cart: [...cart],
+        totalAmount,
+        receivedValue,
+        change,
+        date: new Date()
+      });
+
+      setCart([]);
+      setReceivedMoney('');
+      setReceiptModal(true);
       loadProducts();
     } catch (error) {
       Alert.alert('Error', 'Gagal menyimpan transaksi.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleShareWA = async () => {
+    if (!lastTxData) return;
+    const now = lastTxData.date;
+    const pad = n => String(n).padStart(2, '0');
+    const dateStr = `${now.getDate()}/${now.getMonth()+1}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    
+    let text = `🧾 *STRUK BELANJA - WARUNG MAMAH*\n`;
+    text += `📅 Waktu: ${dateStr}\n`;
+    text += `-----------------------------------\n`;
+    lastTxData.cart.forEach(item => {
+      text += `• ${item.name}\n  ${item.qty} ${item.unit||'pcs'} x ${formatRupiah(item.selling_price)} = ${formatRupiah(item.selling_price * item.qty)}\n`;
+    });
+    text += `-----------------------------------\n`;
+    text += `*TOTAL:* ${formatRupiah(lastTxData.totalAmount)}\n`;
+    text += `Bayar: ${formatRupiah(lastTxData.receivedValue)}\n`;
+    text += `Kembalian: ${formatRupiah(lastTxData.change)}\n\n`;
+    text += `Terima kasih sudah berbelanja di Warung Mamah! 🙏`;
+
+    const url = `whatsapp://send?text=${encodeURIComponent(text)}`;
+    const canOpen = await Linking.canOpenURL(url);
+    if (canOpen) {
+      await Linking.openURL(url);
+    } else {
+      await Sharing.shareAsync(url, { dialogTitle: 'Kirim Nota' });
     }
   };
 
@@ -220,7 +263,7 @@ const Cashier = ({ navigation }) => {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetScroll} contentContainerStyle={styles.presetContent}>
                   <TouchableOpacity 
                     style={[styles.presetChip, styles.presetChipExact]} 
-                    onPress={() => setReceivedMoney(String(totalAmount))}
+                    onPress={() => { setReceivedMoney(String(totalAmount)); Keyboard.dismiss(); }}
                   >
                     <Ionicons name="checkmark-done" size={14} color={colors.white} style={{ marginRight: 4 }} />
                     <Text style={[styles.presetText, { color: colors.white }]}>Uang Pas</Text>
@@ -229,7 +272,7 @@ const Cashier = ({ navigation }) => {
                     <TouchableOpacity 
                       key={amt} 
                       style={styles.presetChip} 
-                      onPress={() => setReceivedMoney(String(amt))}
+                      onPress={() => { setReceivedMoney(String(amt)); Keyboard.dismiss(); }}
                     >
                       <Text style={styles.presetText}>Rp {amt/1000}rb</Text>
                     </TouchableOpacity>
@@ -348,6 +391,62 @@ const Cashier = ({ navigation }) => {
                 </View>
               }
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Struk Transaksi Modal */}
+      <Modal visible={receiptModal} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { height: '80%', padding: 20 }]}>
+            <View style={{ alignItems: 'center', marginBottom: 16 }}>
+              <Ionicons name="checkmark-circle" size={56} color={colors.successText} />
+              <Text style={{ fontSize: 22, fontWeight: '900', color: colors.text, marginTop: 6 }}>Pembayaran Berhasil!</Text>
+              <Text style={{ fontSize: 13, color: colors.textLight, marginTop: 2 }}>Warung Mamah POS</Text>
+            </View>
+
+            <View style={styles.receiptBox}>
+              <Text style={styles.receiptTitle}>Rincian Struk Belanja</Text>
+              <ScrollView style={{ maxHeight: 180 }} showsVerticalScrollIndicator={false}>
+                {lastTxData?.cart.map((item, idx) => (
+                  <View key={idx} style={styles.receiptRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.receiptItemName} numberOfLines={1}>{item.name}</Text>
+                      <Text style={styles.receiptItemSub}>{item.qty} {item.unit||'pcs'} x {formatRupiah(item.selling_price)}</Text>
+                    </View>
+                    <Text style={styles.receiptItemTotal}>{formatRupiah(item.selling_price * item.qty)}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+
+              <View style={styles.receiptDivider} />
+
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptBoldLabel}>Total Belanja</Text>
+                <Text style={styles.receiptBoldValue}>{formatRupiah(lastTxData?.totalAmount || 0)}</Text>
+              </View>
+              <View style={styles.receiptRow}>
+                <Text style={styles.receiptSubLabel}>Uang Bayar</Text>
+                <Text style={styles.receiptSubValue}>{formatRupiah(lastTxData?.receivedValue || 0)}</Text>
+              </View>
+              <View style={styles.receiptRow}>
+                <Text style={[styles.receiptSubLabel, { color: colors.successText, fontWeight: '800' }]}>Kembalian</Text>
+                <Text style={[styles.receiptSubValue, { color: colors.successText, fontWeight: '800' }]}>
+                  {formatRupiah(lastTxData?.change || 0)}
+                </Text>
+              </View>
+            </View>
+
+            <View style={{ gap: 10, marginTop: 16 }}>
+              <TouchableOpacity style={styles.waBtn} onPress={handleShareWA}>
+                <Ionicons name="logo-whatsapp" size={20} color={colors.white} style={{ marginRight: 8 }} />
+                <Text style={styles.waBtnText}>Kirim Struk via WA</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.closeReceiptBtn} onPress={() => setReceiptModal(false)}>
+                <Text style={styles.closeReceiptBtnText}>Selesai & Transaksi Baru</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -517,6 +616,36 @@ const styles = StyleSheet.create({
     borderRadius: 12, alignItems: 'center', justifyContent: 'center' 
   },
   cartQtyBadgeText: { color: colors.white, fontSize: 12, fontWeight: '900' },
+
+  // Receipt Modal Styling
+  receiptBox: {
+    backgroundColor: colors.cardBg, borderRadius: 18, padding: 16,
+    borderWidth: 1, borderColor: colors.border + '60', marginTop: 10,
+  },
+  receiptTitle: { fontSize: 14, fontWeight: '800', color: colors.textSecondary, marginBottom: 10 },
+  receiptRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  receiptItemName: { fontSize: 14, fontWeight: '700', color: colors.text },
+  receiptItemSub: { fontSize: 11, color: colors.textLight, marginTop: 1 },
+  receiptItemTotal: { fontSize: 13, fontWeight: '800', color: colors.text },
+  receiptDivider: { height: 1, backgroundColor: colors.divider, marginVertical: 10 },
+  receiptBoldLabel: { fontSize: 15, fontWeight: '800', color: colors.text },
+  receiptBoldValue: { fontSize: 18, fontWeight: '900', color: colors.primary },
+  receiptSubLabel: { fontSize: 13, color: colors.textLight },
+  receiptSubValue: { fontSize: 14, fontWeight: '700', color: colors.text },
+
+  waBtn: {
+    backgroundColor: '#25D366', borderRadius: 16, paddingVertical: 14,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    elevation: 3, shadowColor: '#25D366', shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2, shadowRadius: 5,
+  },
+  waBtnText: { fontSize: 16, fontWeight: '800', color: colors.white },
+
+  closeReceiptBtn: {
+    backgroundColor: colors.surface, borderRadius: 16, paddingVertical: 14,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border + '60',
+  },
+  closeReceiptBtnText: { fontSize: 15, fontWeight: '700', color: colors.textSecondary },
 });
 
 export default Cashier;
