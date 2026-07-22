@@ -158,7 +158,7 @@ export const executeAiAction = async (action, products) => {
     }
 
     if (!product) {
-      return `⚠️ Gagal update stok: Produk tidak ditemukan di database.`;
+      return `Gagal update stok: Produk tidak ditemukan di database.`;
     }
 
     const delta = Number(action.stock_delta || 0);

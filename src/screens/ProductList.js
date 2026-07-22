@@ -11,9 +11,9 @@ import { colors } from '../theme/colors';
 import { formatRupiah } from '../utils/calculations';
 
 const LOW_STOCK = 5;
-const CATEGORIES = ['Semua', '⚠️ Restok', 'Sembako', 'Snack', 'Minuman', 'Sabun/Deterjen', 'Rokok', 'Obat', 'Lainnya'];
+const CATEGORIES = ['Semua', 'Restok', 'Sembako', 'Snack', 'Minuman', 'Sabun/Deterjen', 'Rokok', 'Obat', 'Lainnya'];
 
-const ProductList = ({ navigation }) => {
+const ProductList = ({ navigation, route }) => {
   const insets = useSafeAreaInsets();
   const [products, setProducts] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -33,7 +33,14 @@ const ProductList = ({ navigation }) => {
     setLoading(false);
   };
 
-  useFocusEffect(useCallback(() => { loadProducts(); }, []));
+  useFocusEffect(
+    useCallback(() => {
+      loadProducts();
+      if (route.params?.initialFilter) {
+        setSelectedCategory(route.params.initialFilter);
+      }
+    }, [route.params?.initialFilter])
+  );
 
   const lowStockCount = products.filter(p => p.stock > 0 && p.stock <= LOW_STOCK).length;
   const outOfStockCount = products.filter(p => p.stock <= 0).length;
@@ -49,7 +56,7 @@ const ProductList = ({ navigation }) => {
   const filtered = sorted.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
     let matchesCategory = true;
-    if (selectedCategory === '⚠️ Restok') {
+    if (selectedCategory === 'Restok') {
       matchesCategory = p.stock <= LOW_STOCK;
     } else if (selectedCategory !== 'Semua') {
       matchesCategory = p.category === selectedCategory;
@@ -205,21 +212,25 @@ const ProductList = ({ navigation }) => {
 
     return (
       <View style={[styles.compactRow, isOut && styles.compactRowOut, isLow && styles.compactRowLow]}>
-        {/* Left Info Column */}
+        {/* Left Info Column - flex: 1 dengan shrink penuh */}
         <View style={styles.compactLeft}>
           <View style={styles.compactTitleRow}>
             <Text style={styles.compactName} numberOfLines={1}>{item.name}</Text>
-            <Text style={styles.compactCategoryBadge}>{item.category || 'Umum'}</Text>
+            <View style={styles.compactCategoryBadge}>
+              <Text style={styles.compactCategoryText}>{(item.category || 'Umum').toUpperCase()}</Text>
+            </View>
           </View>
           <View style={styles.compactMetaRow}>
-            <Text style={styles.compactPrice}>{formatRupiah(item.selling_price)}/{item.unit || 'pcs'}</Text>
-            <Text style={styles.compactDot}>•</Text>
-            <Text style={styles.compactModal}>Modal {formatRupiah(item.modal_price)}</Text>
-            <Text style={styles.compactDot}>•</Text>
-            <Text style={[styles.compactProfit, { color: profit >= 0 ? colors.successDark : colors.dangerText }]}>
-              +{formatRupiah(profit)}
+            <Text style={styles.compactPrice} numberOfLines={1}>
+              {formatRupiah(item.selling_price)}/{item.unit || 'pcs'}
             </Text>
           </View>
+          <Text
+            style={[styles.compactProfit, { color: profit >= 0 ? colors.successDark : colors.dangerText }]}
+            numberOfLines={1}
+          >
+            Modal {formatRupiah(item.modal_price)} · +{formatRupiah(profit)}
+          </Text>
         </View>
 
         {/* Right Stepper & Edit Actions */}
@@ -531,31 +542,34 @@ const styles = StyleSheet.create({
 
   // Compact Row Styling (Ultra Dense & Efficient)
   compactRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    flexDirection: 'row', alignItems: 'center',
     backgroundColor: colors.cardBg, borderRadius: 14, padding: 12, marginBottom: 8,
     borderWidth: 1, borderColor: colors.border + '60',
     shadowColor: colors.shadow, shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.03, shadowRadius: 3, elevation: 1,
+    overflow: 'hidden',
   },
   compactRowOut: { opacity: 0.7, backgroundColor: '#FAFAFA' },
   compactRowLow: { borderWidth: 1.5, borderColor: '#FFE082' },
 
-  compactLeft: { flex: 1, marginRight: 10 },
-  compactTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
-  compactName: { fontSize: 15, fontWeight: '800', color: colors.text, flexShrink: 1 },
+  compactLeft: { flex: 1, flexShrink: 1, marginRight: 8, overflow: 'hidden' },
+  compactTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2, overflow: 'hidden' },
+  compactName: { fontSize: 14, fontWeight: '800', color: colors.text, flexShrink: 1, flexGrow: 0 },
   compactCategoryBadge: {
-    fontSize: 9, fontWeight: '700', color: colors.textLight,
+    flexShrink: 0,
     backgroundColor: colors.surface, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
-    textTransform: 'uppercase',
+  },
+  compactCategoryText: {
+    fontSize: 9, fontWeight: '700', color: colors.textLight, textTransform: 'uppercase',
   },
 
-  compactMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  compactPrice: { fontSize: 13, fontWeight: '800', color: colors.primary },
-  compactDot: { fontSize: 10, color: colors.textLight },
-  compactModal: { fontSize: 11, color: colors.textLight, fontWeight: '600' },
-  compactProfit: { fontSize: 11, fontWeight: '800' },
+  compactMetaRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 1 },
+  compactPrice: { fontSize: 12, fontWeight: '800', color: colors.primary, flexShrink: 1 },
+  compactDot: { fontSize: 10, color: colors.textLight, marginHorizontal: 3 },
+  compactModal: { fontSize: 11, color: colors.textLight, fontWeight: '600', flexShrink: 1 },
+  compactProfit: { fontSize: 11, fontWeight: '700', flexShrink: 1 },
 
-  compactRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  compactRight: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 0 },
   inlineStepper: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface,
     borderRadius: 10, paddingHorizontal: 4, paddingVertical: 2, gap: 4,

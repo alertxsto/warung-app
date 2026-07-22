@@ -1,8 +1,11 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity, ScrollView, 
-  Platform, StatusBar, Alert, ActivityIndicator
+  Platform, StatusBar, Alert, ActivityIndicator, LayoutAnimation, UIManager
 } from 'react-native';
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system';
@@ -36,6 +39,7 @@ const DailyTab = () => {
   const [selectedDate, setSelectedDate] = useState(today);
   const [minAmount, setMinAmount] = useState('');
   const [data, setData] = useState({ totalRevenue: 0, totalProfit: 0, transactions: [], totalItems: 0 });
+  const [expandedTxId, setExpandedTxId] = useState(null); // id transaksi yg sedang diexpand
   const [confirmCancelId, setConfirmCancelId] = useState(null); // id transaksi yg lagi dikonfirmasi
   const [cancelLoading, setCancelLoading] = useState(false);
 
@@ -54,10 +58,9 @@ const DailyTab = () => {
   };
 
   const isToday = selectedDate.toDateString() === today.toDateString();
-  const dateLabel = isToday
-    ? 'Hari Ini'
-    : `${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`;
   const dayName = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'][selectedDate.getDay()];
+  const fullIndonesianDate = `${dayName}, ${selectedDate.getDate()} ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getFullYear()}`;
+  const dateLabel = isToday ? `Hari Ini (${dayName})` : fullIndonesianDate;
 
   const filteredTransactions = data.transactions.filter(t => {
     if (!minAmount) return true;
@@ -81,6 +84,13 @@ const DailyTab = () => {
     const d = new Date(item.date);
     const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
     const isConfirming = confirmCancelId === item.id;
+    const isExpanded = expandedTxId === item.id;
+    const isOld = (new Date() - d) > 24 * 60 * 60 * 1000; // Lebih dari 24 jam
+
+    const toggleExpand = () => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setExpandedTxId(isExpanded ? null : item.id);
+    };
 
     return (
       <View style={styles.txCard}>
@@ -94,18 +104,24 @@ const DailyTab = () => {
               <Text style={styles.txTime}>{time}</Text>
             </View>
             <Text style={styles.txProfit}>{formatRupiah(item.profit)}</Text>
-            {/* Tombol Cancel — toggle inline confirmation */}
-            <TouchableOpacity
-              style={styles.txCancelBtn}
-              onPress={() => setConfirmCancelId(isConfirming ? null : item.id)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons
-                name={isConfirming ? 'close-circle' : 'trash-outline'}
-                size={20}
-                color={isConfirming ? colors.primary : colors.dangerText}
-              />
-            </TouchableOpacity>
+            {/* Tombol Cancel / Lock — toggle inline confirmation */}
+            {!isOld ? (
+              <TouchableOpacity
+                style={styles.txCancelBtn}
+                onPress={() => setConfirmCancelId(isConfirming ? null : item.id)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons
+                  name={isConfirming ? 'close-circle' : 'trash-outline'}
+                  size={20}
+                  color={isConfirming ? colors.primary : colors.dangerText}
+                />
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.txCancelBtn}>
+                <Ionicons name="lock-closed" size={16} color={colors.textLight} />
+              </View>
+            )}
           </View>
 
           {/* ── Inline Confirmation Panel ────────────────── */}
@@ -140,9 +156,21 @@ const DailyTab = () => {
             </View>
           )}
 
+          {/* Header click to expand items */}
+          <TouchableOpacity 
+            style={[styles.txCardBottom, { borderTopWidth: 1, borderColor: colors.divider, marginTop: 4, paddingTop: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]} 
+            onPress={toggleExpand}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.txTotalLabel}>Total Bayar</Text>
+              <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textLight} />
+            </View>
+            <Text style={styles.txTotalValue}>{formatRupiah(item.total_amount)}</Text>
+          </TouchableOpacity>
+
           {/* Items list */}
-          {item.items && item.items.length > 0 && (
-            <View style={styles.txItemsList}>
+          {isExpanded && item.items && item.items.length > 0 && (
+            <View style={[styles.txItemsList, { marginTop: 12, borderTopWidth: 1, borderColor: colors.border+'40', paddingTop: 12 }]}>
               {item.items.map((it, i) => (
                 <View key={i} style={styles.txItemRow}>
                   <Text style={styles.txItemName} numberOfLines={1}>• {it.name}</Text>
@@ -152,11 +180,6 @@ const DailyTab = () => {
               ))}
             </View>
           )}
-
-          <View style={styles.txCardBottom}>
-            <Text style={styles.txTotalLabel}>Total Bayar</Text>
-            <Text style={styles.txTotalValue}>{formatRupiah(item.total_amount)}</Text>
-          </View>
         </View>
       </View>
     );
@@ -234,10 +257,13 @@ const DailyTab = () => {
       ListEmptyComponent={
         <View style={styles.empty}>
           <View style={styles.emptyIconContainer}>
-            <Ionicons name="receipt-outline" size={48} color={colors.textLight} />
+            <Ionicons name="receipt-outline" size={48} color={colors.primary} />
           </View>
-          <Text style={styles.emptyText}>Tidak ada transaksi</Text>
-          <Text style={styles.emptySub}>{dayName}, {dateLabel}</Text>
+          <Text style={styles.emptyText}>Belum Ada Transaksi</Text>
+          <Text style={styles.emptySub}>{fullIndonesianDate}</Text>
+          <Text style={{ fontSize: 13, color: colors.textLight, textAlign: 'center', marginTop: 4, paddingHorizontal: 20 }}>
+            Buka layar Kasir untuk mulai mencatat penjualan barang Mamah!
+          </Text>
         </View>
       }
     />

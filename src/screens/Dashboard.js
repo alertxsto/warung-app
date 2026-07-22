@@ -4,11 +4,12 @@ import {
   RefreshControl, Platform, StatusBar,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { getProducts, getDashboardStats, getTopProducts, getLast7DaysRevenue } from '../database/db';
+import { getProducts, getDashboardStats, getTopProducts, getLast7DaysRevenue, getTotalDebt } from '../database/db';
 import { formatRupiah, calculateTotalEstimatedProfit } from '../utils/calculations';
 import { colors } from '../theme/colors';
 import { Ionicons } from '@expo/vector-icons';
 import { loadTodayChatHistory } from '../utils/chatStorage';
+import { loadStoreProfile } from '../utils/storeSettings';
 
 const DAY_NAMES = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
 const MONTH_NAMES = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
@@ -63,6 +64,8 @@ const BentoCard = ({ icon, iconColor, label, value, subtext, bg, onPress, border
 
 // ─── Mini Bar Chart (7 Hari Terakhir) ────────────────────────────────────────
 const MiniBarChart = ({ data }) => {
+  const [selectedItem, setSelectedItem] = useState(null);
+
   if (!data || data.length === 0) return null;
   const maxRevenue = Math.max(...data.map(d => d.revenue), 1);
   const today = new Date().toISOString().split('T')[0];
@@ -70,17 +73,31 @@ const MiniBarChart = ({ data }) => {
   return (
     <View style={styles.chartCard}>
       <View style={styles.chartHeader}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-          <Ionicons name="bar-chart" size={18} color={colors.primary} />
-          <Text style={styles.chartTitle}>Omset 7 Hari Terakhir</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Ionicons name="bar-chart" size={18} color={colors.primary} />
+            <Text style={styles.chartTitle}>Omset 7 Hari Terakhir</Text>
+          </View>
+          {selectedItem && (
+            <Text style={{ fontSize: 12, fontWeight: '800', color: colors.primary }}>
+              {selectedItem.dayLabel}: {formatRupiah(selectedItem.revenue)}
+            </Text>
+          )}
         </View>
       </View>
       <View style={styles.barsContainer}>
         {data.map((item, idx) => {
           const heightPct = item.revenue > 0 ? (item.revenue / maxRevenue) : 0;
           const isToday = item.date === today;
+          const isSelected = selectedItem?.date === item.date;
+
           return (
-            <View key={idx} style={styles.barWrapper}>
+            <TouchableOpacity
+              key={idx}
+              style={styles.barWrapper}
+              onPress={() => setSelectedItem(isSelected ? null : item)}
+              activeOpacity={0.7}
+            >
               <Text style={styles.barValue} numberOfLines={1}>
                 {item.revenue > 0 ? (item.revenue >= 1000000
                   ? `${(item.revenue / 1000000).toFixed(1)}jt`
@@ -92,11 +109,14 @@ const MiniBarChart = ({ data }) => {
                     styles.barFill,
                     { height: `${Math.max(heightPct * 100, item.revenue > 0 ? 8 : 0)}%` },
                     isToday && styles.barFillToday,
+                    isSelected && { backgroundColor: '#7B1FA2' }
                   ]}
                 />
               </View>
-              <Text style={[styles.barLabel, isToday && styles.barLabelToday]}>{item.dayLabel}</Text>
-            </View>
+              <Text style={[styles.barLabel, isToday && styles.barLabelToday, isSelected && { color: '#7B1FA2', fontWeight: '900' }]}>
+                {item.dayLabel}
+              </Text>
+            </TouchableOpacity>
           );
         })}
       </View>
@@ -170,16 +190,22 @@ const Dashboard = ({ navigation }) => {
   const [tips, setTips] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [showBalance, setShowBalance] = useState(true);
+  const [storeName, setStoreName] = useState('Warung Mamah');
+  const [totalDebt, setTotalDebt] = useState(0);
 
   const loadAll = async () => {
     try {
-      const [s, products, top, chart, chatMsgs] = await Promise.all([
+      const [s, products, top, chart, chatMsgs, profile, debt] = await Promise.all([
         getDashboardStats(),
         getProducts(),
         getTopProducts(new Date().getFullYear(), new Date().getMonth() + 1),
         getLast7DaysRevenue(),
         loadTodayChatHistory(),
+        loadStoreProfile(),
+        getTotalDebt(),
       ]);
+      setStoreName(profile.name || 'Warung Mamah');
+      setTotalDebt(debt);
 
       setStats(s);
       setProductCount(products.length);
@@ -233,7 +259,7 @@ const Dashboard = ({ navigation }) => {
       if (chatMsgs && chatMsgs.length > 0) {
         const lastAiMsg = [...chatMsgs].reverse().find(m => m.role === 'assistant');
         if (lastAiMsg && lastAiMsg.content) {
-          const cleanTxt = lastAiMsg.content.split('\n\n')[0].replace(/^✅\s*/,'');
+          const cleanTxt = lastAiMsg.content.split('\n\n')[0].trim();
           dynamicTips.unshift({
             icon: 'sparkles',
             color: '#7B1FA2',
@@ -283,7 +309,7 @@ const Dashboard = ({ navigation }) => {
         <View style={styles.heroTop}>
           <View style={{ flex: 1 }}>
             <Text style={styles.heroGreeting}>{greeting} <Ionicons name="hand-right" size={15} color="rgba(255,255,255,0.75)" /></Text>
-            <Text style={styles.heroTitle}>Warung Mamah</Text>
+            <Text style={styles.heroTitle}>{storeName}</Text>
             <Text style={styles.heroDate}>{todayLabel}</Text>
           </View>
           <TouchableOpacity
@@ -292,6 +318,13 @@ const Dashboard = ({ navigation }) => {
             activeOpacity={0.7}
           >
             <Ionicons name={showBalance ? "eye" : "eye-off"} size={18} color={colors.white} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.eyeBtn, { marginLeft: 8 }]}
+            onPress={() => navigation.navigate('Settings')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="settings-outline" size={18} color={colors.white} />
           </TouchableOpacity>
         </View>
 
@@ -319,6 +352,14 @@ const Dashboard = ({ navigation }) => {
               <Text style={styles.heroSubValue}>{maskText(stats.monthRevenue)}</Text>
             </View>
           </View>
+          {totalDebt > 100000 && (
+            <View style={styles.debtWarningBanner}>
+              <Ionicons name="warning" size={16} color={colors.warningText} />
+              <Text style={styles.debtWarningText}>
+                Total hutang pelanggan: {formatRupiah(totalDebt)}. Cek tab Hutang untuk detail.
+              </Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -339,6 +380,11 @@ const Dashboard = ({ navigation }) => {
         <QuickActionButton
           icon="cube" label="Stok Barang" sublabel="Kelola Rak"
           color="#E65100" onPress={() => navigation.navigate('ProductList')}
+        />
+        <QuickActionButton
+          icon="wallet-outline" label="Hutang" sublabel="Pelanggan"
+          color="#D32F2F" onPress={() => navigation.navigate('DebtManager')}
+          badge={totalDebt > 0 ? `Rp${totalDebt >= 1000000 ? (totalDebt/1000000).toFixed(0)+'jt' : (totalDebt/1000).toFixed(0)+'rb'}` : null}
         />
       </View>
 
@@ -370,7 +416,7 @@ const Dashboard = ({ navigation }) => {
             subtext={outOfStockCount > 0 ? 'Segera kulakan' : lowStockCount > 0 ? 'Perlu restok' : 'Stok terisi'}
             bg={outOfStockCount > 0 ? colors.danger : lowStockCount > 0 ? colors.warning : '#F0FDF4'}
             borderAccent={outOfStockCount > 0 ? colors.dangerText : lowStockCount > 0 ? colors.warningText : undefined}
-            onPress={() => navigation.navigate('ProductList')}
+            onPress={() => navigation.navigate('ProductList', { initialFilter: 'Restok' })}
           />
         </View>
       </View>
@@ -615,6 +661,13 @@ const styles = StyleSheet.create({
   footerNote: {
     textAlign: 'center', fontSize: 12, color: colors.textLight,
   },
+  debtWarningBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: '#FFF8E1', borderRadius: 12,
+    marginTop: 12, paddingVertical: 10, paddingHorizontal: 12,
+    borderWidth: 1, borderColor: '#FFE082',
+  },
+  debtWarningText: { flex: 1, fontSize: 12, fontWeight: '600', color: colors.warningText },
 });
 
 export default Dashboard;

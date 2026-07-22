@@ -381,9 +381,21 @@ const AiAssistant = ({ navigation }) => {
       const aiMsg = { role: 'assistant', content: aiReply, timestamp: new Date().toISOString() };
       setMessages(prev => [...prev, aiMsg]);
     } catch (e) {
-      const errMsg = e.message?.includes('GANTI_DENGAN')
-        ? 'API Key belum diisi. Buka file src/config.js dan isi dengan API key Groq kamu.'
-        : `Error: ${e.message}`;
+      const raw = e.message || '';
+      let errMsg;
+      if (raw.includes('401')) {
+        errMsg = 'API Key tidak valid atau belum diisi. Hubungi pengembang aplikasi.';
+      } else if (raw.includes('429')) {
+        errMsg = 'AI sedang terlalu sibuk. Coba lagi dalam beberapa detik ya, Mamah.';
+      } else if (raw.includes('GANTI_DENGAN')) {
+        errMsg = 'API Key belum diisi. Hubungi pengembang aplikasi.';
+      } else if (raw.toLowerCase().includes('network') || raw.toLowerCase().includes('fetch') || raw.toLowerCase().includes('failed')) {
+        errMsg = 'Tidak ada koneksi internet. Pastikan HP Mamah terhubung ke WiFi atau data.';
+      } else if (raw.includes('500') || raw.includes('502') || raw.includes('503')) {
+        errMsg = 'Server AI sedang gangguan. Coba lagi sebentar lagi.';
+      } else {
+        errMsg = 'AI Iki sedang tidak bisa diakses. Coba lagi nanti ya, Mamah.';
+      }
       setMessages(prev => [...prev, { role: 'assistant', content: errMsg, timestamp: new Date().toISOString() }]);
     } finally {
       setLoading(false);
@@ -549,6 +561,28 @@ const AiAssistant = ({ navigation }) => {
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={styles.typingText}>AI Iki sedang berpikir...</Text>
               </View>
+            </View>
+          )}
+
+          {/* ── Persistent Quick Prompt Chips (Tampil hanya jika sudah ada percakapan) ── */}
+          {!showSuggestions && !isViewingHistory && !loading && (
+            <View style={styles.quickPromptBar}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.quickPromptContent}>
+                {SUGGESTION_CHIPS.map((chip, i) => (
+                  <TouchableOpacity
+                    key={i}
+                    style={styles.quickPromptChip}
+                    onPress={() => {
+                      if (chip.type === 'template') { setInput(chip.text); inputRef.current?.focus(); }
+                      else sendMessage(chip.text);
+                    }}
+                    activeOpacity={0.75}
+                  >
+                    <Ionicons name={chip.icon} size={14} color={colors.primary} style={{ marginRight: 4 }} />
+                    <Text style={styles.quickPromptChipText}>{chip.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
           )}
 
@@ -877,6 +911,19 @@ const styles = StyleSheet.create({
   },
   historyItemCountText: { fontSize: 15, fontWeight: '700', color: colors.primary },
   historyItemCountLabel: { fontSize: 10, color: colors.textSecondary, fontWeight: '600', textTransform: 'uppercase' },
+
+  quickPromptBar: {
+    backgroundColor: colors.background,
+    paddingVertical: 6,
+    borderTopWidth: 1, borderTopColor: colors.border + '30',
+  },
+  quickPromptContent: { gap: 8, paddingHorizontal: 16 },
+  quickPromptChip: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14,
+    borderWidth: 1, borderColor: colors.border + '60',
+  },
+  quickPromptChipText: { fontSize: 12, fontWeight: '700', color: colors.textSecondary },
 });
 
 export default AiAssistant;

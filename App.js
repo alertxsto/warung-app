@@ -12,6 +12,8 @@ import AddEditProduct from './src/screens/AddEditProduct';
 import Cashier from './src/screens/Cashier';
 import Report from './src/screens/Report';
 import AiAssistant from './src/screens/AiAssistant';
+import Settings from './src/screens/Settings';
+import DebtManager from './src/screens/DebtManager';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from './src/theme/colors';
 
@@ -29,7 +31,7 @@ export default function App() {
       <SafeAreaProvider>
         <View style={splashStyles.container}>
           <Ionicons name="storefront" size={56} color={colors.primary} style={{ marginBottom: 12 }} />
-          <Text style={splashStyles.title}>Warung Mamah</Text>
+          <Text style={splashStyles.title}>Kasir Pintar</Text>
           <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 24 }} />
           <Text style={splashStyles.sub}>Memuat aplikasi...</Text>
         </View>
@@ -54,6 +56,8 @@ export default function App() {
           <Stack.Screen name="Cashier" component={Cashier} />
           <Stack.Screen name="Report" component={Report} />
           <Stack.Screen name="AiAssistant" component={AiAssistant} />
+          <Stack.Screen name="Settings" component={Settings} />
+          <Stack.Screen name="DebtManager" component={DebtManager} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

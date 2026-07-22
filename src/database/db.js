@@ -34,6 +34,15 @@ export const initDB = async () => {
         FOREIGN KEY (transaction_id) REFERENCES transactions (id),
         FOREIGN KEY (product_id) REFERENCES products (id)
       );
+      CREATE TABLE IF NOT EXISTS debts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_name TEXT NOT NULL,
+        total_amount REAL NOT NULL,
+        paid_amount REAL DEFAULT 0,
+        date TEXT NOT NULL,
+        note TEXT,
+        status TEXT DEFAULT 'unpaid'
+      );
     `);
 
     // Cek kolom baru di products (migration sederhana)
@@ -196,7 +205,7 @@ export const getDailyReport = async (dateString) => {
     // Sequential (bukan Promise.all) agar tidak crash SQLite di Android
     for (const t of transactions) {
       const items = await db.getAllAsync(
-        "SELECT ti.*, p.name FROM transaction_items ti LEFT JOIN products p ON ti.product_id = p.id WHERE ti.transaction_id = ?",
+        "SELECT ti.*, p.name, p.unit FROM transaction_items ti LEFT JOIN products p ON ti.product_id = p.id WHERE ti.transaction_id = ?",
         [t.id]
       );
       totalRevenue += t.total_amount;
@@ -343,6 +352,7 @@ export const exportBackup = async () => {
     const products = await db.getAllAsync('SELECT * FROM products ORDER BY id ASC');
     const transactions = await db.getAllAsync('SELECT * FROM transactions ORDER BY id ASC');
     const transactionItems = await db.getAllAsync('SELECT * FROM transaction_items ORDER BY id ASC');
+    const debts = await db.getAllAsync('SELECT * FROM debts ORDER BY id ASC');
 
     const now = new Date();
     const pad = n => String(n).padStart(2, '0');
@@ -353,7 +363,7 @@ export const exportBackup = async () => {
       app: 'WarungApp',
       exported_at: now.toISOString(),
       timestamp,
-      data: { products, transactions, transactionItems },
+      data: { products, transactions, transactionItems, debts },
     };
 
     return JSON.stringify(backup, null, 2);
@@ -375,13 +385,14 @@ export const importBackup = async (jsonString) => {
       throw new Error('Format backup tidak valid');
     }
 
-    const { products, transactions, transactionItems } = backup.data;
+    const { products, transactions, transactionItems, debts } = backup.data;
 
     await db.withExclusiveTransactionAsync(async () => {
       // Hapus semua data lama
       await db.execAsync(`
         DELETE FROM transaction_items;
         DELETE FROM transactions;
+        DELETE FROM debts;
         DELETE FROM products;
       `);
 
@@ -408,12 +419,22 @@ export const importBackup = async (jsonString) => {
           [ti.id, ti.transaction_id, ti.product_id, ti.quantity, ti.price, ti.modal, ti.subtotal]
         );
       }
+
+      if (debts && debts.length > 0) {
+        for (const d of debts) {
+          await db.runAsync(
+            'INSERT INTO debts (id, customer_name, total_amount, paid_amount, date, note, status) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [d.id, d.customer_name, d.total_amount, d.paid_amount || 0, d.date, d.note, d.status || 'unpaid']
+          );
+        }
+      }
     });
 
     return {
       products: products.length,
       transactions: transactions.length,
       transactionItems: transactionItems.length,
+      debts: debts ? debts.length : 0,
     };
   } catch (error) {
     console.error('Error importing backup', error);
@@ -453,5 +474,86 @@ export const cancelTransaction = async (transactionId, restoreStock) => {
   } catch (error) {
     console.error('Error deleting transaction', error);
     throw error;
+  }
+};
+
+export const addDebt = async (debt) => {
+  if (!db) throw new Error('Database belum siap');
+  try {
+    const now = new Date();
+    const pad2 = n => String(n).padStart(2, '0');
+    const date = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}T${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+    const result = await db.runAsync(
+      'INSERT INTO debts (customer_name, total_amount, note, date, status) VALUES (?, ?, ?, ?, ?)',
+      [debt.customer_name, debt.total_amount, debt.note || null, date, 'unpaid']
+    );
+    return result.lastInsertRowId;
+  } catch (error) {
+    console.error('Error adding debt', error);
+    throw error;
+  }
+};
+
+export const getDebts = async (statusFilter) => {
+  if (!db) return [];
+  try {
+    let query = 'SELECT * FROM debts';
+    const params = [];
+    if (statusFilter && statusFilter !== 'all') {
+      query += ' WHERE status = ?';
+      params.push(statusFilter);
+    }
+    query += ' ORDER BY date DESC';
+    const result = await db.getAllAsync(query, params);
+    return result;
+  } catch (error) {
+    console.error('Error getting debts', error);
+    return [];
+  }
+};
+
+export const payDebt = async (id, amount) => {
+  if (!db) throw new Error('Database belum siap');
+  try {
+    const debt = await db.getFirstAsync('SELECT * FROM debts WHERE id = ?', [id]);
+    if (!debt) throw new Error('Hutang tidak ditemukan');
+    const newPaid = debt.paid_amount + amount;
+    let newStatus = 'unpaid';
+    if (newPaid >= debt.total_amount) {
+      newStatus = 'paid';
+    } else if (newPaid > 0) {
+      newStatus = 'partial';
+    }
+    await db.runAsync(
+      'UPDATE debts SET paid_amount = ?, status = ? WHERE id = ?',
+      [newPaid, newStatus, id]
+    );
+    return newStatus;
+  } catch (error) {
+    console.error('Error paying debt', error);
+    throw error;
+  }
+};
+
+export const deleteDebt = async (id) => {
+  if (!db) throw new Error('Database belum siap');
+  try {
+    await db.runAsync('DELETE FROM debts WHERE id = ?', [id]);
+  } catch (error) {
+    console.error('Error deleting debt', error);
+    throw error;
+  }
+};
+
+export const getTotalDebt = async () => {
+  if (!db) return 0;
+  try {
+    const result = await db.getFirstAsync(
+      "SELECT SUM(total_amount - paid_amount) as total FROM debts WHERE status != 'paid'"
+    );
+    return result?.total || 0;
+  } catch (error) {
+    console.error('Error getting total debt', error);
+    return 0;
   }
 };

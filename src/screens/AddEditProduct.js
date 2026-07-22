@@ -30,14 +30,14 @@ const getBuyingUnit = (unit) => {
 };
 
 // ─── Labelled Input ────────────────────────────────────────────────────────────
-const Field = ({ label, hint, value, onChangeText, keyboardType = 'default', placeholder, autoFocus }) => (
+const Field = ({ label, hint, value, onChangeText, keyboardType = 'default', placeholder, autoFocus, error }) => (
   <View style={fieldStyles.wrapper}>
     <View style={fieldStyles.labelRow}>
       <Text style={fieldStyles.label}>{label}</Text>
       {hint ? <Text style={fieldStyles.hint}>{hint}</Text> : null}
     </View>
     <TextInput
-      style={fieldStyles.input}
+      style={[fieldStyles.input, error && { borderColor: colors.dangerText, borderWidth: 2 }]}
       value={value}
       onChangeText={onChangeText}
       keyboardType={keyboardType}
@@ -115,8 +115,9 @@ const AddEditProduct = ({ route, navigation }) => {
     const sell = parseFloat(sellingPrice) || 0;
     const saveProcess = async () => {
       setSaving(true);
+      const formatTitle = str => str.trim().split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
       const productData = {
-        name: name.trim(),
+        name: formatTitle(name),
         category: category.trim() || 'Umum',
         unit: unit.trim().toLowerCase() || 'pcs',
         bulk_price: parseFloat(bulkPrice) || 0,
@@ -342,7 +343,13 @@ const AddEditProduct = ({ route, navigation }) => {
               onChangeText={setSellingPrice}
               keyboardType="numeric"
               placeholder="3000"
+              error={!margin.isProfitable && parseFloat(sellingPrice) > 0}
             />
+            {(!margin.isProfitable && parseFloat(sellingPrice) > 0) && (
+              <Text style={{ color: colors.dangerText, fontSize: 12, fontWeight: '600', marginTop: -6, marginBottom: 12 }}>
+                ⚠️ Harga jual di bawah modal!
+              </Text>
+            )}
             {parseFloat(sellingPrice) > 0 && (
               <View style={[styles.marginCard, { backgroundColor: profitBg, borderColor: profitBorder }]}>
                 <View style={styles.marginCardRow}>

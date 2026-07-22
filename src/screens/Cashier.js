@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Sharing from 'expo-sharing';
 import { getProducts, addTransaction } from '../database/db';
 import { formatRupiah } from '../utils/calculations';
+import { loadStoreProfile } from '../utils/storeSettings';
 import { colors } from '../theme/colors';
 
 const PRESET_AMOUNTS = [10000, 20000, 50000, 100000];
@@ -22,9 +23,12 @@ const Cashier = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Struk Modal State
+  // Store Profile
+  const [storeProfile, setStoreProfile] = useState({ name: 'Warung Mamah', tagline: 'Terima kasih sudah berbelanja!' });
   const [receiptModal, setReceiptModal] = useState(false);
   const [lastTxData, setLastTxData] = useState(null);
+  const [toastMsg, setToastMsg] = useState('');
+  const [confirmModalVisible, setConfirmModalVisible] = useState(false);
 
   const loadProducts = async () => {
     const data = await getProducts();
@@ -34,6 +38,7 @@ const Cashier = ({ navigation }) => {
   useFocusEffect(
     useCallback(() => {
       loadProducts();
+      loadStoreProfile().then(setStoreProfile);
     }, [])
   );
 
@@ -41,19 +46,19 @@ const Cashier = ({ navigation }) => {
     product.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const addToCart = (product) => {
+  const addToCart = (product, customAmount) => {
     if (product.stock <= 0) {
       Alert.alert('Stok Habis', 'Barang ini sedang kosong.');
       return;
     }
     const isDecimalUnit = ['liter','kg','ons','gram'].includes(product.unit);
-    const startQty = isDecimalUnit ? 0.5 : 1;
-    const step = isDecimalUnit ? 0.5 : 1;
+    const defaultStep = isDecimalUnit ? 0.5 : 1;
+    const addQty = customAmount || defaultStep;
 
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.id === product.id);
       if (existingItem) {
-        const newQty = Math.round((existingItem.qty + step) * 100) / 100;
+        const newQty = Math.round((existingItem.qty + addQty) * 100) / 100;
         if (newQty > product.stock) {
           Alert.alert('Stok Tidak Cukup', `Stok ${product.name} hanya tersisa ${product.stock} ${product.unit || 'pcs'}.`);
           return prevCart;
@@ -62,11 +67,17 @@ const Cashier = ({ navigation }) => {
           item.id === product.id ? { ...item, qty: newQty } : item
         );
       } else {
-        return [...prevCart, { ...product, qty: startQty, _step: step }];
+        if (addQty > product.stock) {
+          Alert.alert('Stok Tidak Cukup', `Stok ${product.name} hanya tersisa ${product.stock} ${product.unit || 'pcs'}.`);
+          return prevCart;
+        }
+        return [...prevCart, { ...product, qty: addQty, _step: defaultStep }];
       }
     });
     setModalVisible(false);
     setSearchQuery('');
+    setToastMsg(`${product.name} (+${addQty}) masuk keranjang`);
+    setTimeout(() => setToastMsg(''), 1800);
   };
 
   const updateQty = (id, delta) => {
@@ -96,20 +107,28 @@ const Cashier = ({ navigation }) => {
   const receivedValue = parseInt(receivedMoney.replace(/\D/g, '')) || 0;
   const change = receivedValue - totalAmount;
 
-  const handleCheckout = async () => {
+  const handleCheckout = () => {
     if (cart.length === 0) {
       Alert.alert('Keranjang Kosong', 'Tambahkan barang terlebih dahulu.');
+      return;
+    }
+    if (receivedValue <= 0) {
+      Alert.alert('Nominal Tidak Valid', 'Masukkan nominal uang yang diterima dari pembeli (lebih dari Rp 0).');
       return;
     }
     if (receivedValue < totalAmount) {
       Alert.alert('Uang Kurang', `Kekurangan: ${formatRupiah(totalAmount - receivedValue)}`);
       return;
     }
+    setConfirmModalVisible(true);
+  };
+
+  const handleConfirmCheckout = async () => {
+    setConfirmModalVisible(false);
     setLoading(true);
     try {
       const txId = await addTransaction(cart, totalAmount, totalModal, profit);
-      
-      // Simpan data transaksi untuk nota
+
       setLastTxData({
         id: txId,
         cart: [...cart],
@@ -136,17 +155,19 @@ const Cashier = ({ navigation }) => {
     const pad = n => String(n).padStart(2, '0');
     const dateStr = `${now.getDate()}/${now.getMonth()+1}/${now.getFullYear()} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
     
-    let text = `🧾 *STRUK BELANJA - WARUNG MAMAH*\n`;
-    text += `📅 Waktu: ${dateStr}\n`;
+    let text = `*${storeProfile.name.toUpperCase()}*\n`;
+    if (storeProfile.address) text += `${storeProfile.address}\n`;
+    if (storeProfile.phone) text += `Tel: ${storeProfile.phone}\n`;
+    text += `Waktu: ${dateStr}\n`;
     text += `-----------------------------------\n`;
     lastTxData.cart.forEach(item => {
-      text += `• ${item.name}\n  ${item.qty} ${item.unit||'pcs'} x ${formatRupiah(item.selling_price)} = ${formatRupiah(item.selling_price * item.qty)}\n`;
+      text += `\u2022 ${item.name}\n  ${item.qty} ${item.unit||'pcs'} x ${formatRupiah(item.selling_price)} = ${formatRupiah(item.selling_price * item.qty)}\n`;
     });
     text += `-----------------------------------\n`;
     text += `*TOTAL:* ${formatRupiah(lastTxData.totalAmount)}\n`;
     text += `Bayar: ${formatRupiah(lastTxData.receivedValue)}\n`;
     text += `Kembalian: ${formatRupiah(lastTxData.change)}\n\n`;
-    text += `Terima kasih sudah berbelanja di Warung Mamah! 🙏`;
+    text += storeProfile.tagline || 'Terima kasih sudah berbelanja!';
 
     const url = `whatsapp://send?text=${encodeURIComponent(text)}`;
     const canOpen = await Linking.canOpenURL(url);
@@ -207,6 +228,14 @@ const Cashier = ({ navigation }) => {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Toast Notification */}
+      {toastMsg !== '' && (
+        <View style={styles.toastContainer}>
+          <Ionicons name="checkmark-circle" size={18} color={colors.white} style={{ marginRight: 6 }} />
+          <Text style={styles.toastText}>{toastMsg}</Text>
+        </View>
+      )}
 
       <View style={{ flex: 1 }}>
         <FlatList
@@ -359,29 +388,48 @@ const Cashier = ({ navigation }) => {
                 const inCart = cart.find(c => c.id === item.id);
                 const isOutOfStock = item.stock <= 0;
                 return (
-                  <TouchableOpacity
-                    style={[styles.productItem, isOutOfStock && styles.productItemDisabled]}
-                    onPress={() => !isOutOfStock && addToCart(item)}
-                    activeOpacity={isOutOfStock ? 1 : 0.7}
-                  >
-                    <View style={styles.productItemLeft}>
+                  <View style={[styles.productItem, isOutOfStock && styles.productItemDisabled]}>
+                    <TouchableOpacity
+                      style={styles.productItemLeft}
+                      onPress={() => !isOutOfStock && addToCart(item)}
+                      activeOpacity={isOutOfStock ? 1 : 0.7}
+                    >
                       <Text style={styles.productCategory}>{item.category || 'Umum'}</Text>
                       <Text style={[styles.productName, isOutOfStock && { color: colors.textLight }]}>{item.name}</Text>
                       <Text style={styles.productPrice}>{formatRupiah(item.selling_price)} / {item.unit || 'pcs'}</Text>
-                    </View>
+                    </TouchableOpacity>
+
                     <View style={styles.productItemRight}>
                       <View style={[styles.modalStockBadge, isOutOfStock && { backgroundColor: colors.danger }]}>
                         <Text style={[styles.modalStockText, isOutOfStock && { color: colors.dangerText }]}>
-                          {isOutOfStock ? 'Stok Habis' : `Stok: ${item.stock} ${item.unit || 'pcs'}`}
+                          {isOutOfStock ? 'Habis' : `Stok: ${item.stock}`}
                         </Text>
                       </View>
-                      {inCart && !isOutOfStock && (
-                        <View style={styles.cartQtyBadge}>
-                          <Text style={styles.cartQtyBadgeText}>{inCart.qty}</Text>
+                      
+                      {!isOutOfStock && (
+                        <View style={{ flexDirection: 'row', gap: 4, marginTop: 4 }}>
+                          <TouchableOpacity
+                            style={styles.quickAddPill}
+                            onPress={() => addToCart(item, 1)}
+                          >
+                            <Text style={styles.quickAddPillText}>+1</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.quickAddPill}
+                            onPress={() => addToCart(item, 5)}
+                          >
+                            <Text style={styles.quickAddPillText}>+5</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.quickAddPill}
+                            onPress={() => addToCart(item, 10)}
+                          >
+                            <Text style={styles.quickAddPillText}>+10</Text>
+                          </TouchableOpacity>
                         </View>
                       )}
                     </View>
-                  </TouchableOpacity>
+                  </View>
                 );
               }}
               ListEmptyComponent={
@@ -402,7 +450,7 @@ const Cashier = ({ navigation }) => {
             <View style={{ alignItems: 'center', marginBottom: 16 }}>
               <Ionicons name="checkmark-circle" size={56} color={colors.successText} />
               <Text style={{ fontSize: 22, fontWeight: '900', color: colors.text, marginTop: 6 }}>Pembayaran Berhasil!</Text>
-              <Text style={{ fontSize: 13, color: colors.textLight, marginTop: 2 }}>Warung Mamah POS</Text>
+              <Text style={{ fontSize: 13, color: colors.textLight, marginTop: 2 }}>{storeProfile.name}</Text>
             </View>
 
             <View style={styles.receiptBox}>
@@ -445,6 +493,72 @@ const Cashier = ({ navigation }) => {
 
               <TouchableOpacity style={styles.closeReceiptBtn} onPress={() => setReceiptModal(false)}>
                 <Text style={styles.closeReceiptBtnText}>Selesai & Transaksi Baru</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Konfirmasi Pembayaran Modal */}
+      <Modal visible={confirmModalVisible} animationType="fade" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmModal}>
+            <View style={styles.confirmHeader}>
+              <View style={[styles.confirmIconCircle, { backgroundColor: colors.success + '30' }]}>
+                <Ionicons name="receipt" size={28} color={colors.successText} />
+              </View>
+              <Text style={styles.confirmTitle}>Konfirmasi Pembayaran</Text>
+              <Text style={styles.confirmSub}>Periksa kembali rincian di bawah ini</Text>
+            </View>
+
+            <ScrollView style={styles.confirmItemsScroll} showsVerticalScrollIndicator={false}>
+              <View style={styles.confirmSummaryCard}>
+                <Text style={styles.confirmSectionLabel}>Ringkasan Belanja</Text>
+                {cart.map((item, idx) => (
+                  <View key={idx} style={styles.confirmItemRow}>
+                    <Text style={styles.confirmItemName} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.confirmItemQty}>{item.qty} {item.unit || 'pcs'}</Text>
+                    <Text style={styles.confirmItemTotal}>{formatRupiah(item.selling_price * item.qty)}</Text>
+                  </View>
+                ))}
+
+                <View style={styles.confirmDivider} />
+
+                <View style={styles.confirmRow}>
+                  <Text style={styles.confirmRowLabel}>Total Items</Text>
+                  <Text style={styles.confirmRowValue}>{totalItemsCount} item</Text>
+                </View>
+                <View style={styles.confirmRow}>
+                  <Text style={styles.confirmRowLabel}>Total Belanja</Text>
+                  <Text style={[styles.confirmRowValue, { fontSize: 20, color: colors.primary }]}>{formatRupiah(totalAmount)}</Text>
+                </View>
+                <View style={styles.confirmRow}>
+                  <Text style={styles.confirmRowLabel}>Uang Bayar</Text>
+                  <Text style={styles.confirmRowValue}>{formatRupiah(receivedValue)}</Text>
+                </View>
+                <View style={styles.confirmRow}>
+                  <Text style={[styles.confirmRowLabel, { color: colors.successText, fontWeight: '800' }]}>Kembalian</Text>
+                  <Text style={[styles.confirmRowValue, { color: colors.successText, fontWeight: '800' }]}>{formatRupiah(change)}</Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            <View style={styles.confirmActions}>
+              <TouchableOpacity
+                style={styles.confirmBackBtn}
+                onPress={() => setConfirmModalVisible(false)}
+              >
+                <Ionicons name="arrow-back" size={18} color={colors.textSecondary} />
+                <Text style={styles.confirmBackBtnText}>Kembali</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmPayBtn, loading && { opacity: 0.5 }]}
+                onPress={handleConfirmCheckout}
+                disabled={loading}
+                activeOpacity={0.85}
+              >
+                <Ionicons name="checkmark-circle" size={20} color={colors.white} />
+                <Text style={styles.confirmPayBtnText}>Konfirmasi Bayar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -611,6 +725,11 @@ const styles = StyleSheet.create({
   productItemRight: { alignItems: 'flex-end', gap: 6 },
   modalStockBadge: { backgroundColor: colors.surface, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   modalStockText: { fontSize: 12, fontWeight: '700', color: colors.textLight },
+  quickAddPill: {
+    backgroundColor: colors.primary + '15', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4,
+    borderWidth: 1, borderColor: colors.primary + '30',
+  },
+  quickAddPillText: { fontSize: 11, fontWeight: '800', color: colors.primary },
   cartQtyBadge: { 
     backgroundColor: colors.successText, width: 24, height: 24, 
     borderRadius: 12, alignItems: 'center', justifyContent: 'center' 
@@ -646,6 +765,71 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border + '60',
   },
   closeReceiptBtnText: { fontSize: 15, fontWeight: '700', color: colors.textSecondary },
+
+  toastContainer: {
+    position: 'absolute', top: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 65 : 110,
+    alignSelf: 'center', backgroundColor: '#1E293B', paddingHorizontal: 16, paddingVertical: 10,
+    borderRadius: 20, flexDirection: 'row', alignItems: 'center', zIndex: 999,
+    elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6,
+  },
+  toastText: { color: colors.white, fontSize: 13, fontWeight: '700' },
+
+  confirmModal: {
+    backgroundColor: colors.background,
+    marginHorizontal: 16,
+    borderRadius: 24,
+    maxHeight: '80%',
+    padding: 20,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+  },
+  confirmHeader: { alignItems: 'center', marginBottom: 16 },
+  confirmIconCircle: {
+    width: 56, height: 56, borderRadius: 28,
+    alignItems: 'center', justifyContent: 'center', marginBottom: 12,
+  },
+  confirmTitle: { fontSize: 20, fontWeight: '900', color: colors.text },
+  confirmSub: { fontSize: 13, color: colors.textLight, marginTop: 4 },
+  confirmItemsScroll: { maxHeight: 280 },
+  confirmSummaryCard: {
+    backgroundColor: colors.cardBg, borderRadius: 16,
+    padding: 14, borderWidth: 1, borderColor: colors.border + '60',
+  },
+  confirmSectionLabel: { fontSize: 13, fontWeight: '800', color: colors.textSecondary, marginBottom: 10 },
+  confirmItemRow: {
+    flexDirection: 'row', alignItems: 'center', marginBottom: 8,
+  },
+  confirmItemName: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.text },
+  confirmItemQty: { fontSize: 12, color: colors.textLight, marginHorizontal: 8 },
+  confirmItemTotal: { fontSize: 13, fontWeight: '700', color: colors.primary },
+  confirmDivider: { height: 1, backgroundColor: colors.divider, marginVertical: 10 },
+  confirmRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 6,
+  },
+  confirmRowLabel: { fontSize: 13, color: colors.textLight, fontWeight: '600' },
+  confirmRowValue: { fontSize: 15, fontWeight: '800', color: colors.text },
+  confirmActions: {
+    flexDirection: 'row', gap: 10, marginTop: 18,
+  },
+  confirmBackBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, backgroundColor: colors.surface,
+    borderRadius: 14, paddingVertical: 14,
+    borderWidth: 1, borderColor: colors.border + '60',
+  },
+  confirmBackBtnText: { fontSize: 15, fontWeight: '700', color: colors.textSecondary },
+  confirmPayBtn: {
+    flex: 2, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, backgroundColor: colors.successDark,
+    borderRadius: 14, paddingVertical: 14,
+    elevation: 4, shadowColor: colors.successDark,
+    shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6,
+  },
+  confirmPayBtnText: { fontSize: 15, fontWeight: '800', color: colors.white },
 });
 
 export default Cashier;
