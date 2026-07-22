@@ -108,39 +108,57 @@ const AddEditProduct = ({ route, navigation }) => {
   }, [kgPerBulk, unit]);
 
   const handleSave = async () => {
-    if (!name.trim()) { Alert.alert('⚠️ Perhatian', 'Nama barang tidak boleh kosong'); return; }
-    if (!sellingPrice) { Alert.alert('⚠️ Perhatian', 'Harga jual harus diisi'); return; }
-    if (!stock) { Alert.alert('⚠️ Perhatian', 'Jumlah stok harus diisi'); return; }
-    setSaving(true);
-    const productData = {
-      name: name.trim(),
-      category: category.trim() || 'Umum',
-      unit: unit.trim().toLowerCase() || 'pcs',
-      bulk_price: parseFloat(bulkPrice) || 0,
-      items_per_bulk: parseFloat(itemsPerBulk) || 1,  // parseFloat: support desimal (misal 29.5 liter/karung)
-      modal_price: modalPrice,
-      selling_price: parseFloat(sellingPrice) || 0,
-      stock: parseFloat(stock) || 0,                   // parseFloat: support 0.5, 1.5 kg/liter
-    };
-    try {
-      if (isEditing) {
-        await updateProduct(product.id, productData);
-        Alert.alert('✅ Berhasil', 'Data barang berhasil diperbarui');
-      } else {
-        await addProduct(productData);
-        Alert.alert('✅ Berhasil', 'Barang berhasil ditambahkan!');
+    if (!name.trim()) { Alert.alert('Perhatian', 'Nama barang tidak boleh kosong'); return; }
+    if (!sellingPrice) { Alert.alert('Perhatian', 'Harga jual harus diisi'); return; }
+    if (!stock) { Alert.alert('Perhatian', 'Jumlah stok harus diisi'); return; }
+
+    const sell = parseFloat(sellingPrice) || 0;
+    const saveProcess = async () => {
+      setSaving(true);
+      const productData = {
+        name: name.trim(),
+        category: category.trim() || 'Umum',
+        unit: unit.trim().toLowerCase() || 'pcs',
+        bulk_price: parseFloat(bulkPrice) || 0,
+        items_per_bulk: parseFloat(itemsPerBulk) || 1,  // parseFloat: support desimal (misal 29.5 liter/karung)
+        modal_price: modalPrice,
+        selling_price: sell,
+        stock: parseFloat(stock) || 0,                   // parseFloat: support 0.5, 1.5 kg/liter
+      };
+      try {
+        if (isEditing) {
+          await updateProduct(product.id, productData);
+          Alert.alert('Berhasil', 'Data barang berhasil diperbarui');
+        } else {
+          await addProduct(productData);
+          Alert.alert('Berhasil', 'Barang berhasil ditambahkan!');
+        }
+        navigation.goBack();
+      } catch {
+        Alert.alert('Error', 'Gagal menyimpan data. Coba lagi.');
+      } finally {
+        setSaving(false);
       }
-      navigation.goBack();
-    } catch {
-      Alert.alert('❌ Error', 'Gagal menyimpan data. Coba lagi.');
-    } finally {
-      setSaving(false);
+    };
+
+    // Peringatan jika jual rugi (harga jual < modal)
+    if (modalPrice > 0 && sell < modalPrice) {
+      Alert.alert(
+        'Peringatan Harga Rugi',
+        `Harga jual (${formatRupiah(sell)}) lebih murah dibanding harga modal (${formatRupiah(modalPrice)}).\n\nApakah Anda yakin tetap ingin menyimpan data barang ini?`,
+        [
+          { text: 'Batal', style: 'cancel' },
+          { text: 'Ya, Simpan', onPress: saveProcess }
+        ]
+      );
+    } else {
+      saveProcess();
     }
   };
 
   const handleDelete = () => {
     Alert.alert(
-      '🗑️ Hapus Barang',
+      'Hapus Barang',
       `Yakin ingin menghapus "${product.name}"?\n\nTindakan ini tidak dapat dibatalkan.`,
       [
         { text: 'Batal', style: 'cancel' },
@@ -151,7 +169,7 @@ const AddEditProduct = ({ route, navigation }) => {
               await deleteProduct(product.id);
               navigation.goBack();
             } catch {
-              Alert.alert('❌ Error', 'Gagal menghapus data');
+              Alert.alert('Error', 'Gagal menghapus data');
             }
           }
         }
@@ -338,13 +356,19 @@ const AddEditProduct = ({ route, navigation }) => {
                     <Text style={[styles.marginItemValue, { color: colors.primary }]}>{formatRupiah(parseFloat(sellingPrice) || 0)}</Text>
                   </View>
                   <View style={[styles.marginItem, { alignItems: 'flex-end' }]}>
-                    <Text style={styles.marginItemLabel}>{margin.isProfitable ? '✅ Untung' : '❌ Rugi'}</Text>
+                    <Text style={styles.marginItemLabel}>{margin.isProfitable ? 'Untung' : 'Rugi'}</Text>
                     <Text style={[styles.marginItemValue, { color: profitColor }]}>{formatRupiah(margin.profitRp)}</Text>
                   </View>
                 </View>
                 <View style={styles.marginPercentRow}>
+                  <Ionicons
+                    name={margin.isProfitable ? "trending-up" : "trending-down"}
+                    size={15}
+                    color={profitColor}
+                    style={{ marginRight: 4 }}
+                  />
                   <Text style={[styles.marginPercent, { color: profitColor }]}>
-                    {margin.isProfitable ? '📈' : '📉'} Margin: {margin.marginPercentage}%
+                    Margin: {margin.marginPercentage}%
                   </Text>
                 </View>
               </View>
@@ -368,15 +392,22 @@ const AddEditProduct = ({ route, navigation }) => {
 
           {isEditing && (
             <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
-              <Text style={styles.deleteBtnText}>🗑️ Hapus Barang Ini</Text>
+              <Ionicons name="trash-outline" size={18} color={colors.dangerText} style={{ marginRight: 6 }} />
+              <Text style={styles.deleteBtnText}>Hapus Barang Ini</Text>
             </TouchableOpacity>
           )}
         </ScrollView>
 
         <View style={[styles.footerBar, { paddingBottom: 12 + insets.bottom }]}>
           <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.65 }]} onPress={handleSave} disabled={saving}>
+            <Ionicons
+              name={saving ? "hourglass-outline" : isEditing ? "save-outline" : "add-circle-outline"}
+              size={20}
+              color={colors.white}
+              style={{ marginRight: 6 }}
+            />
             <Text style={styles.saveBtnText}>
-              {saving ? '⏳ Menyimpan...' : isEditing ? '💾 Simpan Perubahan' : '✅ Tambah Barang'}
+              {saving ? 'Menyimpan...' : isEditing ? 'Simpan Perubahan' : 'Tambah Barang'}
             </Text>
           </TouchableOpacity>
         </View>

@@ -139,7 +139,8 @@ const ProductList = ({ navigation }) => {
             style={[styles.chip, styles.chipWarning, filterRestock && styles.chipWarningActive]}
             onPress={() => setFilterRestock(v => !v)}
           >
-            <Text style={[styles.chipText, filterRestock && styles.chipTextActive]}>⚠️ Restok</Text>
+            <Ionicons name="warning-outline" size={13} color={filterRestock ? colors.white : colors.warningText} style={{ marginRight: 4 }} />
+            <Text style={[styles.chipText, filterRestock && styles.chipTextActive]}>Restok</Text>
           </TouchableOpacity>
         </View>
         <Text style={styles.countLabel}>{filtered.length} barang</Text>
@@ -171,12 +172,18 @@ const ProductList = ({ navigation }) => {
               isOut && styles.stockBadgeOut,
               isLow && styles.stockBadgeLow,
             ]}>
+              <Ionicons
+                name={isOut ? "alert-circle" : isLow ? "warning" : "cube-outline"}
+                size={13}
+                color={isOut ? colors.dangerText : isLow ? colors.warningText : colors.primary}
+                style={{ marginRight: 3 }}
+              />
               <Text style={[
                 styles.stockBadgeText,
                 isOut && { color: colors.dangerText },
                 isLow && { color: colors.warningText },
               ]}>
-                {isOut ? '❌ Habis' : `📦 ${item.stock} ${item.unit || 'pcs'}`}
+                {isOut ? 'Habis' : `Stok: ${item.stock} ${item.unit || 'pcs'}`}
               </Text>
             </View>
           </View>
@@ -304,9 +311,12 @@ const ProductList = ({ navigation }) => {
         >
           <TouchableOpacity activeOpacity={1} style={styles.quickStockBox}>
             <View style={styles.quickStockHeader}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.qsTitle}>📦 Ubah Stok Cepat</Text>
-                <Text style={styles.qsProductName} numberOfLines={1}>{selectedProduct?.name}</Text>
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Ionicons name="cube" size={20} color={colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.qsTitle}>Ubah Stok Cepat</Text>
+                  <Text style={styles.qsProductName} numberOfLines={1}>{selectedProduct?.name}</Text>
+                </View>
               </View>
               <TouchableOpacity onPress={() => setQuickStockModal(false)} style={styles.qsClose} hitSlop={{top:10, bottom:10, left:10, right:10}}>
                  <Ionicons name="close-circle" size={32} color={colors.textLight} />
@@ -351,7 +361,7 @@ const ProductList = ({ navigation }) => {
                        onPress={() => changeStock(selectedProduct?.items_per_bulk ?? 1)}
                      >
                        <Text style={[styles.qsBtnText, { color: colors.successText, fontSize: 15 }]}>
-                         +1 karung ✓
+                         +1 karung
                        </Text>
                      </TouchableOpacity>
                    </View>

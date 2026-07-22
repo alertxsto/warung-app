@@ -382,8 +382,8 @@ const AiAssistant = ({ navigation }) => {
       setMessages(prev => [...prev, aiMsg]);
     } catch (e) {
       const errMsg = e.message?.includes('GANTI_DENGAN')
-        ? '⚠️ API Key belum diisi. Buka file src/config.js dan isi dengan API key Groq kamu.'
-        : `❌ Error: ${e.message}`;
+        ? 'API Key belum diisi. Buka file src/config.js dan isi dengan API key Groq kamu.'
+        : `Error: ${e.message}`;
       setMessages(prev => [...prev, { role: 'assistant', content: errMsg, timestamp: new Date().toISOString() }]);
     } finally {
       setLoading(false);
@@ -394,7 +394,7 @@ const AiAssistant = ({ navigation }) => {
   // ── Hapus chat hari ini ──
   const handleClearChat = () => {
     Alert.alert(
-      '🗑️ Hapus Chat Hari Ini?',
+      'Hapus Chat Hari Ini?',
       'Semua percakapan hari ini akan terhapus. Chat hari sebelumnya tetap tersimpan.',
       [
         { text: 'Batal', style: 'cancel' },
@@ -414,7 +414,7 @@ const AiAssistant = ({ navigation }) => {
   // ── New Chat (reset tampilan, history tetap tersimpan) ──
   const handleNewChat = () => {
     Alert.alert(
-      '✨ Mulai Chat Baru?',
+      'Mulai Chat Baru?',
       'Percakapan sekarang akan tersimpan di riwayat. Mau mulai obrolan baru?',
       [
         { text: 'Batal', style: 'cancel' },

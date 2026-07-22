@@ -109,7 +109,7 @@ const Cashier = ({ navigation }) => {
     setLoading(true);
     try {
       await addTransaction(cart, totalAmount, totalModal, profit);
-      Alert.alert('✅ Transaksi Berhasil', `Kembalian: ${formatRupiah(change)}`, [
+      Alert.alert('Transaksi Berhasil', `Kembalian: ${formatRupiah(change)}`, [
         { text: 'OK', onPress: () => { setCart([]); setReceivedMoney(''); } }
       ]);
       loadProducts();
@@ -164,7 +164,7 @@ const Cashier = ({ navigation }) => {
             <Text style={styles.headerSub}>{cart.length} Jenis Barang di Keranjang</Text>
           </View>
           <TouchableOpacity 
-             onPress={() => cart.length > 0 && Alert.alert('🧹 Kosongkan', 'Hapus semua isi keranjang?', [{text:'Batal'}, {text:'Ya, Hapus', onPress:()=>setCart([])}])}
+             onPress={() => cart.length > 0 && Alert.alert('Kosongkan Keranjang', 'Hapus semua isi keranjang?', [{text:'Batal'}, {text:'Ya, Hapus', onPress:()=>setCart([])}])}
              style={[styles.backBtn, { backgroundColor: colors.danger + '10', borderColor: colors.danger + '20' }]}
           >
              <Ionicons name="trash-outline" size={22} color={colors.dangerText} />
@@ -328,7 +328,7 @@ const Cashier = ({ navigation }) => {
                     <View style={styles.productItemRight}>
                       <View style={[styles.modalStockBadge, isOutOfStock && { backgroundColor: '#FFEBEE' }]}>
                         <Text style={[styles.modalStockText, isOutOfStock && { color: colors.dangerText }]}>
-                          {isOutOfStock ? 'Stok Habis' : `📦 ${item.stock} ${item.unit || 'pcs'}`}
+                          {isOutOfStock ? 'Stok Habis' : `Stok: ${item.stock} ${item.unit || 'pcs'}`}
                         </Text>
                       </View>
                       {inCart && !isOutOfStock && (

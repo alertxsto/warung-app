@@ -461,19 +461,19 @@ const Report = ({ navigation }) => {
             dialogTitle: 'Simpan atau Kirim Backup Data',
           });
         } else {
-          Alert.alert('✅ File Tersimpan', `Backup disimpan sebagai:\n${filename}\n\nDi folder Documents aplikasi.`);
+          Alert.alert('File Tersimpan', `Backup disimpan sebagai:\n${filename}\n\nDi folder Documents aplikasi.`);
         }
       } catch (fileErr) {
         // Fallback: tampilkan statistik backup tanpa file
         const parsed = JSON.parse(json);
         Alert.alert(
-          '✅ Data Siap Dibackup',
+          'Data Siap Dibackup',
           `${parsed.data.products.length} barang\n${parsed.data.transactions.length} transaksi\n\nCatatan: Berbagi file tidak tersedia di mode ini. Gunakan APK untuk backup penuh.`,
           [{ text: 'OK' }]
         );
       }
     } catch (e) {
-      Alert.alert('❌ Gagal Backup', e.message);
+      Alert.alert('Gagal Backup', e.message);
     } finally {
       setBackupLoading(false);
     }
@@ -481,7 +481,7 @@ const Report = ({ navigation }) => {
 
   const handleRestore = () => {
     Alert.alert(
-      '⚠️ Pulihkan Data',
+      'Pulihkan Data',
       'Ini akan MENGHAPUS semua data saat ini dan menggantinya dengan data dari file backup.\n\nPastikan Anda sudah yakin!',
       [
         { text: 'Batal', style: 'cancel' },
@@ -493,11 +493,11 @@ const Report = ({ navigation }) => {
             const content = await FileSystem.readAsStringAsync(result.assets[0].uri, { encoding: 'utf8' });
             const stats = await importBackup(content);
             Alert.alert(
-              '✅ Berhasil Dipulihkan!',
+              'Berhasil Dipulihkan!',
               `${stats.products} produk\n${stats.transactions} transaksi\ntelah berhasil dipulihkan.`
             );
           } catch (e) {
-            Alert.alert('❌ Gagal Restore', e.message);
+            Alert.alert('Gagal Restore', e.message);
           }
         }}
       ]

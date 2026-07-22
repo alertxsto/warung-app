@@ -124,31 +124,34 @@ export const deleteProduct = async (id) => {
 export const addTransaction = async (cart, totalAmount, totalModal, profit) => {
   if (!db) return;
   try {
-    // Gunakan local datetime bukan UTC (toISOString() pakai UTC → tengah malam WIB jadi kemarin)
-    const now = new Date();
-    const pad2 = n => String(n).padStart(2, '0');
-    const date = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}T${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
+    let transactionId;
+    await db.withExclusiveTransactionAsync(async () => {
+      // Gunakan local datetime bukan UTC (toISOString() pakai UTC → tengah malam WIB jadi kemarin)
+      const now = new Date();
+      const pad2 = n => String(n).padStart(2, '0');
+      const date = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}T${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
 
-    // Insert transaction
-    const txResult = await db.runAsync(
-      'INSERT INTO transactions (date, total_amount, total_modal, profit) VALUES (?, ?, ?, ?)',
-      [date, totalAmount, totalModal, profit]
-    );
-    const transactionId = txResult.lastInsertRowId;
-
-    // Insert transaction items and update stock
-    for (const item of cart) {
-      await db.runAsync(
-        'INSERT INTO transaction_items (transaction_id, product_id, quantity, price, modal, subtotal) VALUES (?, ?, ?, ?, ?, ?)',
-        [transactionId, item.id, item.qty, item.selling_price, item.modal_price, item.selling_price * item.qty]
+      // Insert transaction
+      const txResult = await db.runAsync(
+        'INSERT INTO transactions (date, total_amount, total_modal, profit) VALUES (?, ?, ?, ?)',
+        [date, totalAmount, totalModal, profit]
       );
+      transactionId = txResult.lastInsertRowId;
 
-      // Update stock
-      await db.runAsync(
-        'UPDATE products SET stock = stock - ? WHERE id = ?',
-        [item.qty, item.id]
-      );
-    }
+      // Insert transaction items and update stock
+      for (const item of cart) {
+        await db.runAsync(
+          'INSERT INTO transaction_items (transaction_id, product_id, quantity, price, modal, subtotal) VALUES (?, ?, ?, ?, ?, ?)',
+          [transactionId, item.id, item.qty, item.selling_price, item.modal_price, item.selling_price * item.qty]
+        );
+
+        // Update stock
+        await db.runAsync(
+          'UPDATE products SET stock = stock - ? WHERE id = ?',
+          [item.qty, item.id]
+        );
+      }
+    });
     return transactionId;
   } catch (error) {
     console.error('Error adding transaction', error);
@@ -374,36 +377,38 @@ export const importBackup = async (jsonString) => {
 
     const { products, transactions, transactionItems } = backup.data;
 
-    // Hapus semua data lama
-    await db.execAsync(`
-      DELETE FROM transaction_items;
-      DELETE FROM transactions;
-      DELETE FROM products;
-    `);
+    await db.withExclusiveTransactionAsync(async () => {
+      // Hapus semua data lama
+      await db.execAsync(`
+        DELETE FROM transaction_items;
+        DELETE FROM transactions;
+        DELETE FROM products;
+      `);
 
-    // Pulihkan products
-    for (const p of products) {
-      await db.runAsync(
-        'INSERT INTO products (id, name, bulk_price, items_per_bulk, modal_price, selling_price, stock, category, unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [p.id, p.name, p.bulk_price, p.items_per_bulk || 1, p.modal_price, p.selling_price, p.stock, p.category || 'Umum', p.unit || 'pcs']
-      );
-    }
+      // Pulihkan products
+      for (const p of products) {
+        await db.runAsync(
+          'INSERT INTO products (id, name, bulk_price, items_per_bulk, modal_price, selling_price, stock, category, unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [p.id, p.name, p.bulk_price, p.items_per_bulk || 1, p.modal_price, p.selling_price, p.stock, p.category || 'Umum', p.unit || 'pcs']
+        );
+      }
 
-    // Pulihkan transactions
-    for (const t of transactions) {
-      await db.runAsync(
-        'INSERT INTO transactions (id, date, total_amount, total_modal, profit) VALUES (?, ?, ?, ?, ?)',
-        [t.id, t.date, t.total_amount, t.total_modal, t.profit]
-      );
-    }
+      // Pulihkan transactions
+      for (const t of transactions) {
+        await db.runAsync(
+          'INSERT INTO transactions (id, date, total_amount, total_modal, profit) VALUES (?, ?, ?, ?, ?)',
+          [t.id, t.date, t.total_amount, t.total_modal, t.profit]
+        );
+      }
 
-    // Pulihkan transaction_items
-    for (const ti of transactionItems) {
-      await db.runAsync(
-        'INSERT INTO transaction_items (id, transaction_id, product_id, quantity, price, modal, subtotal) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [ti.id, ti.transaction_id, ti.product_id, ti.quantity, ti.price, ti.modal, ti.subtotal]
-      );
-    }
+      // Pulihkan transaction_items
+      for (const ti of transactionItems) {
+        await db.runAsync(
+          'INSERT INTO transaction_items (id, transaction_id, product_id, quantity, price, modal, subtotal) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [ti.id, ti.transaction_id, ti.product_id, ti.quantity, ti.price, ti.modal, ti.subtotal]
+        );
+      }
+    });
 
     return {
       products: products.length,
@@ -426,23 +431,25 @@ export const importBackup = async (jsonString) => {
 export const cancelTransaction = async (transactionId, restoreStock) => {
   if (!db) throw new Error('Database belum siap');
   try {
-    if (restoreStock) {
-      // Ambil item dulu sebelum dihapus
-      const items = await db.getAllAsync(
-        'SELECT * FROM transaction_items WHERE transaction_id = ?',
-        [transactionId]
-      );
-      // Kembalikan stok
-      for (const item of items) {
-        await db.runAsync(
-          'UPDATE products SET stock = stock + ? WHERE id = ?',
-          [item.quantity, item.product_id]
+    await db.withExclusiveTransactionAsync(async () => {
+      if (restoreStock) {
+        // Ambil item dulu sebelum dihapus
+        const items = await db.getAllAsync(
+          'SELECT * FROM transaction_items WHERE transaction_id = ?',
+          [transactionId]
         );
+        // Kembalikan stok
+        for (const item of items) {
+          await db.runAsync(
+            'UPDATE products SET stock = stock + ? WHERE id = ?',
+            [item.quantity, item.product_id]
+          );
+        }
       }
-    }
-    // Hard delete — hapus items dulu (foreign key), lalu transaksinya
-    await db.runAsync('DELETE FROM transaction_items WHERE transaction_id = ?', [transactionId]);
-    await db.runAsync('DELETE FROM transactions WHERE id = ?', [transactionId]);
+      // Hard delete — hapus items dulu (foreign key), lalu transaksinya
+      await db.runAsync('DELETE FROM transaction_items WHERE transaction_id = ?', [transactionId]);
+      await db.runAsync('DELETE FROM transactions WHERE id = ?', [transactionId]);
+    });
   } catch (error) {
     console.error('Error deleting transaction', error);
     throw error;

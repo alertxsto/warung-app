@@ -333,7 +333,7 @@ const Dashboard = ({ navigation }) => {
         activeOpacity={0.82}
       >
         <View style={styles.aiBtnIcon}>
-          <Text style={{ fontSize: 24 }}>🤖</Text>
+          <Ionicons name="sparkles" size={24} color={colors.primary} />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.aiBtnLabel}>Tanya AI Iki</Text>

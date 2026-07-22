@@ -12,6 +12,7 @@ import AddEditProduct from './src/screens/AddEditProduct';
 import Cashier from './src/screens/Cashier';
 import Report from './src/screens/Report';
 import AiAssistant from './src/screens/AiAssistant';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from './src/theme/colors';
 
 const Stack = createNativeStackNavigator();
@@ -27,7 +28,7 @@ export default function App() {
     return (
       <SafeAreaProvider>
         <View style={splashStyles.container}>
-          <Text style={splashStyles.emoji}>🏪</Text>
+          <Ionicons name="storefront" size={56} color={colors.primary} style={{ marginBottom: 12 }} />
           <Text style={splashStyles.title}>Warung Mamah</Text>
           <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 24 }} />
           <Text style={splashStyles.sub}>Memuat aplikasi...</Text>

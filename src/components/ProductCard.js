@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { formatRupiah } from '../utils/calculations';
 
@@ -29,9 +30,12 @@ const ProductCard = ({ product, onPress }) => {
           <Text style={styles.name} numberOfLines={1}>{product.name}</Text>
           <View style={[styles.stockBadge, { backgroundColor: stockBg }]}>
             {(isLowStock || isOutOfStock) && (
-              <Text style={[styles.stockIcon]}>
-                {isOutOfStock ? '🔴' : '⚠️'}
-              </Text>
+              <Ionicons
+                name={isOutOfStock ? "alert-circle" : "warning"}
+                size={14}
+                color={stockColor}
+                style={{ marginRight: 2 }}
+              />
             )}
             <Text style={[styles.stockText, { color: stockColor }]}>
               {isOutOfStock ? 'Habis' : `Stok: ${product.stock}`}
