@@ -1,17 +1,17 @@
 import React, { useState, useCallback } from 'react';
 import {
   View, FlatList, StyleSheet, Text, ActivityIndicator,
-  TouchableOpacity, Alert, TextInput, Modal, StatusBar, Platform,
+  TouchableOpacity, Alert, TextInput, Modal, StatusBar, Platform, ScrollView
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { getProducts, updateProduct } from '../database/db';
-import ProductCard from '../components/ProductCard';
 import { colors } from '../theme/colors';
 import { formatRupiah } from '../utils/calculations';
 
 const LOW_STOCK = 5;
+const CATEGORIES = ['Semua', '⚠️ Restok', 'Sembako', 'Snack', 'Minuman', 'Sabun/Deterjen', 'Rokok', 'Obat', 'Lainnya'];
 
 const ProductList = ({ navigation }) => {
   const insets = useSafeAreaInsets();
@@ -19,7 +19,8 @@ const ProductList = ({ navigation }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [sortBy, setSortBy] = useState('name');
-  const [filterRestock, setFilterRestock] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('Semua');
+  const [isGridMode, setIsGridMode] = useState(false); // Mode tampilan (Compact List vs Grid)
 
   // Quick Stock Modal State
   const [quickStockModal, setQuickStockModal] = useState(false);
@@ -47,9 +48,24 @@ const ProductList = ({ navigation }) => {
 
   const filtered = sorted.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRestock = filterRestock ? (p.stock <= LOW_STOCK) : true;
-    return matchesSearch && matchesRestock;
+    let matchesCategory = true;
+    if (selectedCategory === '⚠️ Restok') {
+      matchesCategory = p.stock <= LOW_STOCK;
+    } else if (selectedCategory !== 'Semua') {
+      matchesCategory = p.category === selectedCategory;
+    }
+    return matchesSearch && matchesCategory;
   });
+
+  const handleInlineStockChange = async (product, delta) => {
+    const newStock = Math.max(0, product.stock + delta);
+    try {
+      await updateProduct(product.id, { ...product, stock: newStock });
+      setProducts(prev => prev.map(p => p.id === product.id ? { ...p, stock: newStock } : p));
+    } catch {
+      Alert.alert('Error', 'Gagal mengubah stok');
+    }
+  };
 
   const handleQuickStock = (product) => {
     setSelectedProduct(product);
@@ -61,7 +77,6 @@ const ProductList = ({ navigation }) => {
     const newStock = Math.max(0, selectedProduct.stock + delta);
     try {
       await updateProduct(selectedProduct.id, { ...selectedProduct, stock: newStock });
-      // Update local state for immediate feedback
       setSelectedProduct(prev => ({ ...prev, stock: newStock }));
       loadProducts();
     } catch {
@@ -77,7 +92,7 @@ const ProductList = ({ navigation }) => {
 
   const renderHeader = () => (
     <>
-      {/* Stats bar */}
+      {/* Summary Cards */}
       <View style={styles.statsBar}>
         <View style={styles.statItem}>
           <Text style={styles.statValue}>{products.length}</Text>
@@ -85,21 +100,21 @@ const ProductList = ({ navigation }) => {
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={[styles.statValue, outOfStockCount > 0 && { color: '#FFCDD2' }]}>
+          <Text style={[styles.statValue, outOfStockCount > 0 && { color: colors.dangerText }]}>
             {outOfStockCount}
           </Text>
           <Text style={styles.statLabel}>Stok Habis</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={[styles.statValue, lowStockCount > 0 && { color: '#FFE082' }]}>
+          <Text style={[styles.statValue, lowStockCount > 0 && { color: colors.warningText }]}>
             {lowStockCount}
           </Text>
           <Text style={styles.statLabel}>Menipis</Text>
         </View>
         <View style={styles.statDivider} />
         <View style={styles.statItem}>
-          <Text style={[styles.statValue, { fontSize: 12 }]} numberOfLines={1}>
+          <Text style={[styles.statValue, { fontSize: 13 }]} numberOfLines={1}>
             {totalStockValue >= 1000000
               ? `${(totalStockValue / 1000000).toFixed(1)}jt`
               : `${(totalStockValue / 1000).toFixed(0)}rb`}
@@ -108,22 +123,28 @@ const ProductList = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Alert banner */}
-      {(outOfStockCount > 0 || lowStockCount > 0) && !searchQuery && (
-        <View style={[styles.alertBar, outOfStockCount > 0 && styles.alertBarDanger]}>
-          <Ionicons name={outOfStockCount > 0 ? "close-circle" : "warning"} size={18} color={outOfStockCount > 0 ? colors.dangerText : colors.warningText} />
-          <Text style={[styles.alertBarText, { color: outOfStockCount > 0 ? colors.dangerText : colors.warningText }]}>
-            {outOfStockCount > 0 ? `${outOfStockCount} barang habis` : ''}{outOfStockCount > 0 && lowStockCount > 0 ? '  •  ' : ''}{lowStockCount > 0 ? `${lowStockCount} menipis` : ''}
-          </Text>
-          <TouchableOpacity onPress={() => setFilterRestock(true)}>
-            <Text style={[styles.alertBarAction, { color: outOfStockCount > 0 ? colors.dangerText : colors.warningText }]}>Lihat →</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* Category Pills Filter Bar */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll} contentContainerStyle={styles.categoryContent}>
+        {CATEGORIES.map(cat => {
+          const isSelected = selectedCategory === cat;
+          return (
+            <TouchableOpacity
+              key={cat}
+              style={[styles.categoryTab, isSelected && styles.categoryTabActive]}
+              onPress={() => setSelectedCategory(cat)}
+            >
+              <Text style={[styles.categoryTabText, isSelected && styles.categoryTabTextActive]}>
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
 
-      {/* Sort & filter bar */}
+      {/* Sort & Layout View Switcher */}
       <View style={styles.controlBar}>
         <View style={styles.sortGroup}>
+          <Text style={styles.sortGroupLabel}>Urut:</Text>
           {SORT_OPTIONS.map(opt => (
             <TouchableOpacity
               key={opt.value}
@@ -135,89 +156,118 @@ const ProductList = ({ navigation }) => {
               </Text>
             </TouchableOpacity>
           ))}
+        </View>
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <Text style={styles.countLabel}>{filtered.length} barang</Text>
+          {/* Mode Switcher */}
           <TouchableOpacity
-            style={[styles.chip, styles.chipWarning, filterRestock && styles.chipWarningActive]}
-            onPress={() => setFilterRestock(v => !v)}
+            style={styles.viewModeBtn}
+            onPress={() => setIsGridMode(prev => !prev)}
           >
-            <Ionicons name="warning-outline" size={13} color={filterRestock ? colors.white : colors.warningText} style={{ marginRight: 4 }} />
-            <Text style={[styles.chipText, filterRestock && styles.chipTextActive]}>Restok</Text>
+            <Ionicons name={isGridMode ? "list" : "grid-outline"} size={18} color={colors.primary} />
           </TouchableOpacity>
         </View>
-        <Text style={styles.countLabel}>{filtered.length} barang</Text>
       </View>
     </>
   );
 
-  const renderItem = ({ item }) => {
+  // Compact Row Item (Super Dense & Fast)
+  const renderCompactItem = ({ item }) => {
     const profit = item.selling_price - item.modal_price;
     const isOut = item.stock <= 0;
     const isLow = item.stock > 0 && item.stock <= LOW_STOCK;
+    const isDecimalUnit = ['liter','kg','ons','gram'].includes(item.unit);
+    const step = isDecimalUnit ? 0.5 : 1;
 
     return (
-      <View style={[styles.card, isOut && styles.cardOut, isLow && styles.cardLow]}>
-        <View style={styles.cardBody}>
-          {/* Top row */}
-          <View style={styles.cardTop}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.cardCategory}>{item.category || 'Umum'}</Text>
-              <Text style={styles.cardName} numberOfLines={1}>{item.name}</Text>
-            </View>
-            <View style={[
-              styles.stockBadge,
-              isOut && styles.stockBadgeOut,
-              isLow && styles.stockBadgeLow,
+      <View style={[styles.compactRow, isOut && styles.compactRowOut, isLow && styles.compactRowLow]}>
+        {/* Left Info Column */}
+        <View style={styles.compactLeft}>
+          <View style={styles.compactTitleRow}>
+            <Text style={styles.compactName} numberOfLines={1}>{item.name}</Text>
+            <Text style={styles.compactCategoryBadge}>{item.category || 'Umum'}</Text>
+          </View>
+          <View style={styles.compactMetaRow}>
+            <Text style={styles.compactPrice}>{formatRupiah(item.selling_price)}/{item.unit || 'pcs'}</Text>
+            <Text style={styles.compactDot}>•</Text>
+            <Text style={styles.compactModal}>Modal {formatRupiah(item.modal_price)}</Text>
+            <Text style={styles.compactDot}>•</Text>
+            <Text style={[styles.compactProfit, { color: profit >= 0 ? colors.successDark : colors.dangerText }]}>
+              +{formatRupiah(profit)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Right Stepper & Edit Actions */}
+        <View style={styles.compactRight}>
+          <View style={[styles.inlineStepper, isOut && styles.inlineStepperOut, isLow && styles.inlineStepperLow]}>
+            <TouchableOpacity style={styles.inlineStepBtn} onPress={() => handleInlineStockChange(item, -step)}>
+              <Text style={styles.inlineStepBtnText}>−</Text>
+            </TouchableOpacity>
+            <Text style={[
+              styles.inlineStepValue,
+              isOut && { color: colors.dangerText },
+              isLow && { color: colors.warningText },
             ]}>
-              <Ionicons
-                name={isOut ? "alert-circle" : isLow ? "warning" : "cube-outline"}
-                size={13}
-                color={isOut ? colors.dangerText : isLow ? colors.warningText : colors.primary}
-                style={{ marginRight: 3 }}
-              />
-              <Text style={[
-                styles.stockBadgeText,
-                isOut && { color: colors.dangerText },
-                isLow && { color: colors.warningText },
-              ]}>
-                {isOut ? 'Habis' : `Stok: ${item.stock} ${item.unit || 'pcs'}`}
-              </Text>
-            </View>
-          </View>
-
-          {/* Price row */}
-          <View style={styles.cardPriceRow}>
-            <View>
-              <Text style={styles.cardPriceLabel}>Modal/{item.unit || 'pcs'}</Text>
-              <Text style={styles.cardModalPrice}>{formatRupiah(item.modal_price)}</Text>
-            </View>
-            <View style={styles.cardArrow}>
-              <Text style={styles.cardArrowText}>→</Text>
-            </View>
-            <View>
-              <Text style={styles.cardPriceLabel}>Jual/{item.unit || 'pcs'}</Text>
-              <Text style={styles.cardSellPrice}>{formatRupiah(item.selling_price)}</Text>
-            </View>
-            <View style={styles.cardProfitBadge}>
-              <Text style={styles.cardProfitLabel}>Untung</Text>
-              <Text style={[styles.cardProfitValue, { color: profit >= 0 ? colors.successText : colors.dangerText }]}>
-                {formatRupiah(profit)}
-              </Text>
-            </View>
-          </View>
-
-          {/* Bottom row */}
-          <View style={styles.cardBottom}>
-            <TouchableOpacity style={styles.quickBtn} onPress={() => handleQuickStock(item)}>
-              <Ionicons name="cube-outline" size={16} color={colors.primary} style={{ marginRight: 4 }} />
-              <Text style={styles.quickBtnText}>Ubah Stok</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.editBtn}
-              onPress={() => navigation.navigate('AddEditProduct', { product: item })}
-            >
-              <Ionicons name="pencil-outline" size={16} color={colors.primary} style={{ marginRight: 4 }} />
-              <Text style={styles.editBtnText}>Edit</Text>
+              {item.stock} {item.unit || 'pcs'}
+            </Text>
+            <TouchableOpacity style={styles.inlineStepBtn} onPress={() => handleInlineStockChange(item, step)}>
+              <Text style={styles.inlineStepBtnText}>+</Text>
             </TouchableOpacity>
           </View>
+
+          <TouchableOpacity
+            style={styles.iconEditBtn}
+            onPress={() => navigation.navigate('AddEditProduct', { product: item })}
+          >
+            <Ionicons name="pencil" size={16} color={colors.primary} />
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.iconMoreBtn}
+            onPress={() => handleQuickStock(item)}
+          >
+            <Ionicons name="ellipsis-vertical" size={16} color={colors.textLight} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  // Grid Card Item
+  const renderGridItem = ({ item }) => {
+    const profit = item.selling_price - item.modal_price;
+    const isOut = item.stock <= 0;
+    const isLow = item.stock > 0 && item.stock <= LOW_STOCK;
+    const isDecimalUnit = ['liter','kg','ons','gram'].includes(item.unit);
+    const step = isDecimalUnit ? 0.5 : 1;
+
+    return (
+      <View style={[styles.gridCard, isOut && styles.compactRowOut, isLow && styles.compactRowLow]}>
+        <View style={styles.gridTop}>
+          <Text style={styles.compactCategoryBadge}>{item.category || 'Umum'}</Text>
+          <Text style={styles.compactName} numberOfLines={2}>{item.name}</Text>
+          <Text style={styles.compactPrice}>{formatRupiah(item.selling_price)}/{item.unit || 'pcs'}</Text>
+        </View>
+
+        <View style={styles.gridBottom}>
+          <View style={styles.inlineStepper}>
+            <TouchableOpacity style={styles.inlineStepBtn} onPress={() => handleInlineStockChange(item, -step)}>
+              <Text style={styles.inlineStepBtnText}>−</Text>
+            </TouchableOpacity>
+            <Text style={styles.inlineStepValue}>{item.stock} {item.unit || 'pcs'}</Text>
+            <TouchableOpacity style={styles.inlineStepBtn} onPress={() => handleInlineStockChange(item, step)}>
+              <Text style={styles.inlineStepBtnText}>+</Text>
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={styles.iconEditBtn}
+            onPress={() => navigation.navigate('AddEditProduct', { product: item })}
+          >
+            <Ionicons name="pencil" size={16} color={colors.primary} />
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -225,7 +275,7 @@ const ProductList = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      {/* Premium Header */}
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -235,70 +285,58 @@ const ProductList = ({ navigation }) => {
             <Text style={styles.headerTitle}>Stok Barang</Text>
             <Text style={styles.headerSub}>{products.length} Jenis Barang Tersedia</Text>
           </View>
-          <View style={[styles.backBtn, { backgroundColor: colors.primary + '10', borderColor: colors.primary + '20' }]}>
-             <Ionicons name="cube" size={22} color={colors.primary} />
-          </View>
+          <TouchableOpacity
+            style={[styles.backBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+            onPress={() => navigation.navigate('AddEditProduct')}
+          >
+             <Ionicons name="add" size={24} color={colors.white} />
+          </TouchableOpacity>
         </View>
       </View>
 
       {/* Search */}
       <View style={styles.searchWrapper}>
-        <Ionicons name="search" size={20} color={colors.textLight} />
+        <Ionicons name="search" size={18} color={colors.textLight} />
         <TextInput
           style={styles.searchInput}
           placeholder="Cari nama barang..."
           placeholderTextColor={colors.textLight}
           value={searchQuery}
           onChangeText={setSearchQuery}
-          returnKeyType="search"
         />
-        {searchQuery.length > 0 && (
+        {searchQuery !== '' && (
           <TouchableOpacity onPress={() => setSearchQuery('')}>
-            <Ionicons name="close-circle" size={20} color={colors.textLight} />
+            <Ionicons name="close-circle" size={18} color={colors.textLight} />
           </TouchableOpacity>
         )}
       </View>
 
-      <FlatList
-        data={filtered}
-        keyExtractor={item => item.id.toString()}
-        contentContainerStyle={[styles.list, { paddingBottom: 90 + insets.bottom }]}
-        ListHeaderComponent={renderHeader}
-        renderItem={renderItem}
-        ListEmptyComponent={
-          loading
-            ? <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 48 }} />
-            : (
-              <View style={styles.empty}>
-                <Ionicons name="cube-outline" size={64} color={colors.textLight} />
-                <Text style={styles.emptyText}>{searchQuery ? 'Barang tidak ditemukan' : 'Belum ada barang'}</Text>
-                {!searchQuery && <Text style={styles.emptySub}>Tap "Tambah Barang" untuk memulai</Text>}
-              </View>
-            )
-        }
-        showsVerticalScrollIndicator={false}
-      />
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      ) : (
+        <FlatList
+          key={isGridMode ? 'GRID' : 'LIST'}
+          data={filtered}
+          numColumns={isGridMode ? 2 : 1}
+          keyExtractor={item => item.id.toString()}
+          renderItem={isGridMode ? renderGridItem : renderCompactItem}
+          ListHeaderComponent={renderHeader}
+          contentContainerStyle={[styles.list, { paddingBottom: 80 + insets.bottom }]}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="cube-outline" size={56} color={colors.textLight} />
+              <Text style={styles.emptyText}>Barang Tidak Ditemukan</Text>
+              <Text style={styles.emptySubText}>Coba ganti kata kunci pencarian atau filter</Text>
+            </View>
+          }
+        />
+      )}
 
-      {/* Footer */}
-      <View style={[styles.footer, { paddingBottom: 12 + insets.bottom }]}>
-        <TouchableOpacity
-          style={styles.addBtn}
-          onPress={() => navigation.navigate('AddEditProduct')}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="add-circle" size={24} color={colors.white} style={{ marginRight: 8 }} />
-          <Text style={styles.addBtnText}>Tambah Barang Baru</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* QUICK STOCK MODAL */}
-      <Modal 
-        visible={quickStockModal} 
-        transparent 
-        animationType="fade"
-        statusBarTranslucent={true}
-        onRequestClose={() => setQuickStockModal(false)}
-      >
+      {/* Quick Stock Options Modal */}
+      <Modal visible={quickStockModal} transparent={true} animationType="fade">
         <TouchableOpacity 
           style={styles.modalOverlay} 
           activeOpacity={1} 
@@ -309,12 +347,12 @@ const ProductList = ({ navigation }) => {
               <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Ionicons name="cube" size={20} color={colors.primary} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.qsTitle}>Ubah Stok Cepat</Text>
+                  <Text style={styles.qsTitle}>Opsi Stok & Grosir</Text>
                   <Text style={styles.qsProductName} numberOfLines={1}>{selectedProduct?.name}</Text>
                 </View>
               </View>
               <TouchableOpacity onPress={() => setQuickStockModal(false)} style={styles.qsClose} hitSlop={{top:10, bottom:10, left:10, right:10}}>
-                 <Ionicons name="close-circle" size={32} color={colors.textLight} />
+                 <Ionicons name="close-circle" size={30} color={colors.textLight} />
               </TouchableOpacity>
             </View>
 
@@ -331,32 +369,29 @@ const ProductList = ({ navigation }) => {
                       (selectedProduct?.stock ?? 0) <= 0 && { color: colors.dangerText },
                       (selectedProduct?.stock ?? 0) > 0 && (selectedProduct?.stock ?? 0) <= LOW_STOCK && { color: colors.warningText }
                     ]}>
-                      {selectedProduct?.stock ?? 0} <Text style={{ fontSize: 14 }}>{selectedProduct?.unit || 'pcs'}</Text>
+                      {selectedProduct?.stock} {selectedProduct?.unit || 'pcs'}
                     </Text>
                   </View>
                </View>
 
-               {/* Tambah per karung/bungkus (pakai items_per_bulk) */}
                {(selectedProduct?.items_per_bulk ?? 1) > 1 && (
-                 <View style={{ marginBottom: 16 }}>
-                   <Text style={[styles.qsActionLabel, { marginBottom: 8 }]}>
-                     Tambah per {selectedProduct?.items_per_bulk} {selectedProduct?.unit} (1 karung/bungkus):
-                   </Text>
+                 <View style={styles.qsBulkBox}>
+                   <Text style={styles.qsBulkLabel}>Format Grosir ({selectedProduct?.items_per_bulk} {selectedProduct?.unit || 'pcs'} / karung):</Text>
                    <View style={{ flexDirection: 'row', gap: 10 }}>
                      <TouchableOpacity 
                        style={[styles.qsBtn, { backgroundColor: '#E3F2FD', flex: 1 }]} 
                        onPress={() => changeStock(-(selectedProduct?.items_per_bulk ?? 1))}
                      >
-                       <Text style={[styles.qsBtnText, { color: '#1565C0', fontSize: 15 }]}>
-                         −1 karung
+                       <Text style={[styles.qsBtnText, { color: '#1565C0', fontSize: 14 }]}>
+                         −1 grosir
                        </Text>
                      </TouchableOpacity>
                      <TouchableOpacity 
                        style={[styles.qsBtn, { backgroundColor: '#E8F5E9', flex: 1 }]} 
                        onPress={() => changeStock(selectedProduct?.items_per_bulk ?? 1)}
                      >
-                       <Text style={[styles.qsBtnText, { color: colors.successText, fontSize: 15 }]}>
-                         +1 karung
+                       <Text style={[styles.qsBtnText, { color: colors.successText, fontSize: 14 }]}>
+                         +1 grosir
                        </Text>
                      </TouchableOpacity>
                    </View>
@@ -372,23 +407,13 @@ const ProductList = ({ navigation }) => {
                     <Text style={styles.qsBtnText}>−1</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.qsBtn, styles.qsBtnPlus]} onPress={() => changeStock(1)}>
-                    <Text style={styles.qsBtnText}>+1</Text>
+                    <Text style={[styles.qsBtnText, styles.qsBtnTextPlus]}>+1</Text>
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.qsBtn, styles.qsBtnPlus]} onPress={() => changeStock(5)}>
-                    <Text style={styles.qsBtnText}>+5</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.qsBtn, styles.qsBtnPlus]} onPress={() => changeStock(10)}>
-                    <Text style={styles.qsBtnText}>+10</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.qsBtn, styles.qsBtnPlus]} onPress={() => changeStock(40)}>
-                    <Text style={styles.qsBtnText}>+40</Text>
+                    <Text style={[styles.qsBtnText, styles.qsBtnTextPlus]}>+5</Text>
                   </TouchableOpacity>
                </View>
             </View>
-
-            <TouchableOpacity style={styles.qsDoneBtn} onPress={() => setQuickStockModal(false)}>
-              <Text style={styles.qsDoneText}>Selesai & Simpan</Text>
-            </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
@@ -396,17 +421,18 @@ const ProductList = ({ navigation }) => {
   );
 };
 
+// ─── STYLES ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
 
   header: {
     backgroundColor: colors.cardBg,
     paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 10 : 60,
-    paddingBottom: 20, paddingHorizontal: 20,
-    borderBottomLeftRadius: 30, borderBottomRightRadius: 30,
+    paddingBottom: 16, paddingHorizontal: 20,
+    borderBottomLeftRadius: 28, borderBottomRightRadius: 28,
+    borderWidth: 1, borderColor: colors.border + '50',
     shadowColor: colors.shadow, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1, shadowRadius: 10, elevation: 8,
-    marginBottom: 4,
+    shadowOpacity: 0.05, shadowRadius: 8, elevation: 4,
   },
   headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerTitleContainer: { flex: 1, marginLeft: 12 },
@@ -415,186 +441,147 @@ const styles = StyleSheet.create({
   backBtn: { 
     width: 44, height: 44, borderRadius: 14, 
     alignItems: 'center', justifyContent: 'center', 
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.divider 
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border + '60'
   },
 
-  // Search - rounded pill style
   searchWrapper: {
-    flexDirection: 'row', alignItems: 'center', 
-    backgroundColor: colors.cardBg,
-    marginHorizontal: 14, marginVertical: 10,
-    paddingHorizontal: 16, paddingVertical: 10,
-    borderRadius: 20,
-    gap: 10,
-    elevation: 4, shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08, shadowRadius: 6,
-    borderWidth: 1, borderColor: colors.divider,
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg,
+    marginHorizontal: 16, marginTop: 12, marginBottom: 4,
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 14,
+    borderWidth: 1, borderColor: colors.border + '60',
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03, shadowRadius: 4, elevation: 2,
   },
-  searchInput: { flex: 1, fontSize: 16, color: colors.text, paddingVertical: 2 },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 14, color: colors.text },
 
-  // Stats bar - rounded card
   statsBar: {
-    flexDirection: 'row', backgroundColor: colors.primary,
-    marginHorizontal: 14, marginBottom: 10,
-    paddingVertical: 14, paddingHorizontal: 16,
-    alignItems: 'center', borderRadius: 20,
-    elevation: 4, shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8,
+    flexDirection: 'row', backgroundColor: colors.cardBg,
+    marginHorizontal: 16, marginTop: 6, marginBottom: 10, borderRadius: 16,
+    paddingVertical: 10, paddingHorizontal: 8, alignItems: 'center',
+    borderWidth: 1, borderColor: colors.border + '60',
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.03, shadowRadius: 4, elevation: 2,
   },
   statItem: { flex: 1, alignItems: 'center' },
-  statValue: { fontSize: 17, fontWeight: '800', color: colors.white },
-  statLabel: { fontSize: 10, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
-  statDivider: { width: 1, height: 28, backgroundColor: 'rgba(255,255,255,0.2)' },
+  statValue: { fontSize: 15, fontWeight: '900', color: colors.primary, marginBottom: 1 },
+  statLabel: { fontSize: 10, color: colors.textLight, fontWeight: '600', textAlign: 'center' },
+  statDivider: { width: 1, height: 24, backgroundColor: colors.divider },
 
-  // Alert bar - rounded card
-  alertBar: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF8E1',
-    marginHorizontal: 14, marginBottom: 10, paddingHorizontal: 16, paddingVertical: 12,
-    borderRadius: 16, gap: 10,
-    borderWidth: 1.5, borderColor: '#FFE082',
-    elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 4,
+  categoryScroll: { marginHorizontal: 16, marginBottom: 8 },
+  categoryContent: { gap: 6, paddingRight: 16 },
+  categoryTab: {
+    backgroundColor: colors.cardBg, paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 12, borderWidth: 1, borderColor: colors.border + '60',
   },
-  alertBarDanger: { backgroundColor: '#FCE4EC', borderColor: '#EF9A9A' },
-  alertBarText: { flex: 1, fontSize: 13, fontWeight: '600' },
-  alertBarAction: { fontSize: 13, fontWeight: '700' },
+  categoryTabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+  categoryTabText: { fontSize: 12, fontWeight: '700', color: colors.textSecondary },
+  categoryTabTextActive: { color: colors.white },
 
-  // Control bar - floating card
   controlBar: {
-    flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10,
-    backgroundColor: colors.cardBg, marginHorizontal: 14, marginBottom: 12,
-    borderRadius: 18, gap: 8,
-    elevation: 2, shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06, shadowRadius: 5,
-    borderWidth: 1, borderColor: colors.divider,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 16, marginBottom: 8,
   },
-  sortGroup: { flex: 1, flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  sortGroup: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  sortGroupLabel: { fontSize: 11, color: colors.textLight, fontWeight: '700', marginRight: 2 },
   chip: {
-    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20,
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.cardBg, paddingHorizontal: 9, paddingVertical: 4,
+    borderRadius: 9, borderWidth: 1, borderColor: colors.border + '60',
   },
   chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipWarning: { borderColor: colors.warningText },
-  chipWarningActive: { backgroundColor: colors.warningText, borderColor: colors.warningText },
-  chipText: { fontSize: 12, color: colors.textSecondary, fontWeight: '600' },
+  chipText: { fontSize: 11, color: colors.textSecondary, fontWeight: '600' },
   chipTextActive: { color: colors.white },
-  countLabel: { fontSize: 12, color: colors.textLight, fontWeight: '600' },
+  countLabel: { fontSize: 11, color: colors.textLight, fontWeight: '700' },
+  viewModeBtn: {
+    backgroundColor: colors.cardBg, padding: 6, borderRadius: 8,
+    borderWidth: 1, borderColor: colors.border + '60',
+  },
 
-  list: { paddingHorizontal: 12, paddingTop: 4 },
+  list: { paddingHorizontal: 16, paddingTop: 2 },
 
-  // Product Card
-  card: {
-    backgroundColor: colors.cardBg, borderRadius: 20, marginBottom: 12,
-    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 6, elevation: 2,
-    borderWidth: 1, borderColor: colors.border + '60'
+  // Compact Row Styling (Ultra Dense & Efficient)
+  compactRow: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: colors.cardBg, borderRadius: 14, padding: 12, marginBottom: 8,
+    borderWidth: 1, borderColor: colors.border + '60',
+    shadowColor: colors.shadow, shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.03, shadowRadius: 3, elevation: 1,
   },
-  cardOut: { opacity: 0.75, backgroundColor: '#FAFAFA' },
-  cardLow: { borderWidth: 1.5, borderColor: '#FFE082' },
-  cardBody: { flex: 1, padding: 16 },
+  compactRowOut: { opacity: 0.7, backgroundColor: '#FAFAFA' },
+  compactRowLow: { borderWidth: 1.5, borderColor: '#FFE082' },
 
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
-  cardCategory: { fontSize: 10, fontWeight: '700', color: colors.textLight, textTransform: 'uppercase', marginBottom: 2 },
-  cardName: { fontSize: 16, fontWeight: '700', color: colors.text, marginRight: 8 },
+  compactLeft: { flex: 1, marginRight: 10 },
+  compactTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 },
+  compactName: { fontSize: 15, fontWeight: '800', color: colors.text, flexShrink: 1 },
+  compactCategoryBadge: {
+    fontSize: 9, fontWeight: '700', color: colors.textLight,
+    backgroundColor: colors.surface, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
+    textTransform: 'uppercase',
+  },
 
-  stockBadge: { backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12 },
-  stockBadgeOut: { backgroundColor: colors.danger },
-  stockBadgeLow: { backgroundColor: colors.warning },
-  stockBadgeText: { fontSize: 13, fontWeight: '800', color: colors.textSecondary },
+  compactMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  compactPrice: { fontSize: 13, fontWeight: '800', color: colors.primary },
+  compactDot: { fontSize: 10, color: colors.textLight },
+  compactModal: { fontSize: 11, color: colors.textLight, fontWeight: '600' },
+  compactProfit: { fontSize: 11, fontWeight: '800' },
 
-  cardPriceRow: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.background,
-    borderRadius: 14, padding: 12, marginBottom: 12, gap: 8,
+  compactRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  inlineStepper: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surface,
+    borderRadius: 10, paddingHorizontal: 4, paddingVertical: 2, gap: 4,
+    borderWidth: 1, borderColor: colors.border + '50',
   },
-  cardPriceLabel: { fontSize: 10, color: colors.textLight, marginBottom: 2, fontWeight: '700' },
-  cardModalPrice: { fontSize: 13, fontWeight: '600', color: colors.textSecondary },
-  cardSellPrice: { fontSize: 14, fontWeight: '800', color: colors.primary },
-  cardArrow: { flex: 0 },
-  cardArrowText: { fontSize: 18, color: colors.textLight },
-  cardProfitBadge: {
-    flex: 1, alignItems: 'flex-end', borderLeftWidth: 1, borderLeftColor: colors.divider, paddingLeft: 12,
-  },
-  cardProfitLabel: { fontSize: 10, color: colors.textLight, marginBottom: 2, fontWeight: '700' },
-  cardProfitValue: { fontSize: 15, fontWeight: '900' },
+  inlineStepperOut: { backgroundColor: '#FFEBEE', borderColor: '#FFCDD2' },
+  inlineStepperLow: { backgroundColor: '#FFF8E1', borderColor: '#FFE082' },
+  inlineStepBtn: { width: 24, height: 24, borderRadius: 6, backgroundColor: colors.cardBg, alignItems: 'center', justifyContent: 'center' },
+  inlineStepBtnText: { fontSize: 14, fontWeight: '900', color: colors.primary },
+  inlineStepValue: { fontSize: 12, fontWeight: '800', color: colors.text, paddingHorizontal: 2 },
 
-  cardBottom: { flexDirection: 'row', gap: 8 },
-  quickBtn: {
-    flex: 1.2, backgroundColor: colors.surface, borderRadius: 16, paddingVertical: 11,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5, borderColor: colors.border,
+  iconEditBtn: {
+    width: 32, height: 32, borderRadius: 8,
+    backgroundColor: colors.primary + '15', alignItems: 'center', justifyContent: 'center',
   },
-  quickBtnText: { fontSize: 13, color: colors.primary, fontWeight: '800' },
-  editBtn: {
-    flex: 1, backgroundColor: colors.primary + '15', borderRadius: 16, paddingVertical: 11,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1.5, borderColor: colors.primary + '40',
+  iconMoreBtn: {
+    width: 28, height: 32, borderRadius: 8,
+    alignItems: 'center', justifyContent: 'center',
   },
-  editBtnText: { fontSize: 13, color: colors.primary, fontWeight: '800' },
 
-  // Empty
-  empty: { alignItems: 'center', paddingTop: 60, gap: 8 },
-  emptyText: { fontSize: 18, fontWeight: '600', color: colors.textSecondary },
-  emptySub: { fontSize: 13, color: colors.textLight },
+  // Grid Card
+  gridCard: {
+    flex: 1, backgroundColor: colors.cardBg, borderRadius: 16, padding: 12, margin: 4,
+    borderWidth: 1, borderColor: colors.border + '60', justifyContent: 'space-between',
+  },
+  gridTop: { marginBottom: 10 },
+  gridBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
 
-  // Footer
-  footer: {
-    position: 'absolute', bottom: 0, left: 0, right: 0, paddingHorizontal: 16,
-    paddingTop: 12, backgroundColor: colors.cardBg,
-    borderTopLeftRadius: 28, borderTopRightRadius: 28,
-    elevation: 16, shadowColor: colors.shadow, shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.12, shadowRadius: 10,
-  },
-  addBtn: {
-    backgroundColor: colors.primary, borderRadius: 18, paddingVertical: 16,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    elevation: 4, shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 8,
-  },
-  addBtnText: { fontSize: 17, fontWeight: '800', color: colors.white },
+  loadingContainer: { paddingVertical: 60, alignItems: 'center' },
+  emptyContainer: { alignItems: 'center', paddingVertical: 60, gap: 8 },
+  emptyText: { fontSize: 16, fontWeight: '700', color: colors.textSecondary },
+  emptySubText: { fontSize: 13, color: colors.textLight },
 
-  // QUICK STOCK MODAL
-  modalOverlay: { 
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', 
-    justifyContent: 'center', padding: 24 
-  },
-  quickStockBox: {
-    backgroundColor: colors.cardBg, borderRadius: 28, padding: 20,
-    elevation: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3, shadowRadius: 20,
-  },
-  quickStockHeader: { 
-    flexDirection: 'row', justifyContent: 'space-between', 
-    alignItems: 'center', marginBottom: 20, paddingBottom: 12,
-    borderBottomWidth: 1, borderBottomColor: colors.divider
-  },
-  qsTitle: { fontSize: 13, fontWeight: '800', color: colors.primary, textTransform: 'uppercase' },
-  qsProductName: { fontSize: 20, fontWeight: '700', color: colors.text, marginTop: 4 },
-  qsClose: { padding: 4, marginLeft: 8 },
-  
-  qsBody: { marginBottom: 20 },
-  qsCurrentRow: { 
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: colors.background, padding: 14, borderRadius: 16, marginBottom: 18
-  },
-  qsCurrentLabel: { fontSize: 15, fontWeight: '600', color: colors.textSecondary },
+  // Quick Stock Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  quickStockBox: { width: '100%', backgroundColor: colors.cardBg, borderRadius: 24, padding: 20, maxWidth: 360 },
+  quickStockHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  qsTitle: { fontSize: 17, fontWeight: '800', color: colors.text },
+  qsProductName: { fontSize: 13, color: colors.textLight, fontWeight: '600', marginTop: 1 },
+  qsClose: { padding: 2 },
+
+  qsBody: { gap: 14 },
+  qsCurrentRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  qsCurrentLabel: { fontSize: 14, color: colors.textSecondary, fontWeight: '700' },
   qsCurrentValueBox: { backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  qsCurrentValue: { fontSize: 24, fontWeight: '900', color: colors.primary },
-  
-  qsActionLabel: { fontSize: 14, fontWeight: '700', color: colors.textLight, marginBottom: 12 },
-  qsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  qsBtn: { 
-    flex: 1, minWidth: '28%', height: 54, borderRadius: 14, 
-    alignItems: 'center', justifyContent: 'center', elevation: 2
-  },
-  qsBtnMinus: { backgroundColor: '#FCE4EC' },
-  qsBtnPlus: { backgroundColor: '#E8F5E9' },
-  qsBtnText: { fontSize: 18, fontWeight: '800', color: colors.text },
-  
-  qsDoneBtn: {
-    backgroundColor: colors.primary, paddingVertical: 14, borderRadius: 14,
-    alignItems: 'center', marginTop: 8
-  },
-  qsDoneText: { fontSize: 16, fontWeight: '800', color: colors.white },
+  qsCurrentValue: { fontSize: 14, fontWeight: '800', color: colors.primary },
+
+  qsBulkBox: { backgroundColor: colors.background, padding: 12, borderRadius: 14, gap: 8 },
+  qsBulkLabel: { fontSize: 12, color: colors.textSecondary, fontWeight: '600' },
+
+  qsActionLabel: { fontSize: 13, color: colors.textSecondary, fontWeight: '700' },
+  qsGrid: { flexDirection: 'row', gap: 8 },
+  qsBtn: { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
+  qsBtnMinus: { backgroundColor: '#FFEBEE', borderColor: '#FFCDD2' },
+  qsBtnPlus: { backgroundColor: colors.primary, borderColor: colors.primary },
+  qsBtnText: { fontSize: 15, fontWeight: '800', color: colors.dangerText },
+  qsBtnTextPlus: { color: colors.white },
 });
 
 export default ProductList;

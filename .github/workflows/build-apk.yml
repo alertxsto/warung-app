@@ -1,0 +1,52 @@
+name: Build Android APK (EAS) & GitHub Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build APK & Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: 🏗️ Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 📦 Install Dependencies
+        run: npm ci
+
+      - name: 🚀 Setup Expo & EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: 🔨 Build APK via EAS
+        run: npx eas-cli build --platform android --profile preview --non-interactive --output=warung-app.apk
+
+      - name: 📤 Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: warung-app.apk
+          name: Warung App Release ${{ github.ref_name }}
+          body: |
+            ## 📱 Warung App APK Release
+            Dipublikasikan otomatis via EAS Build & GitHub Actions.
+            
+            - **Platform**: Android (APK)
+            - **Commit**: `${{ github.sha }}`
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

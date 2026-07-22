@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Modal, Alert, KeyboardAvoidingView, Platform, ScrollView, TextInput, StatusBar
+  Modal, Alert, ScrollView, TextInput, StatusBar, Platform
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -10,7 +10,7 @@ import { getProducts, addTransaction } from '../database/db';
 import { formatRupiah } from '../utils/calculations';
 import { colors } from '../theme/colors';
 
-const SHORTCUTS = [500, 1000, 2000, 5000, 10000, 20000, 50000, 100000];
+const PRESET_AMOUNTS = [10000, 20000, 50000, 100000];
 
 const Cashier = ({ navigation }) => {
   const insets = useSafeAreaInsets();
@@ -41,7 +41,6 @@ const Cashier = ({ navigation }) => {
       Alert.alert('Stok Habis', 'Barang ini sedang kosong.');
       return;
     }
-    // Unit berbasis berat/volume mulai dari 0.5, lainnya mulai 1
     const isDecimalUnit = ['liter','kg','ons','gram'].includes(product.unit);
     const startQty = isDecimalUnit ? 0.5 : 1;
     const step = isDecimalUnit ? 0.5 : 1;
@@ -69,7 +68,6 @@ const Cashier = ({ navigation }) => {
     setCart(prevCart =>
       prevCart.map(item => {
         if (item.id === id) {
-          // Round ke 2 desimal untuk hindari floating point noise
           const newQty = Math.round((item.qty + delta) * 100) / 100;
           if (newQty > item.stock) {
             Alert.alert('Stok Tidak Cukup', `Stok tersisa hanya ${item.stock} ${item.unit || 'pcs'}.`);
@@ -88,14 +86,10 @@ const Cashier = ({ navigation }) => {
 
   const totalAmount = cart.reduce((sum, item) => sum + (item.selling_price * item.qty), 0);
   const totalModal = cart.reduce((sum, item) => sum + (item.modal_price * item.qty), 0);
+  const totalItemsCount = cart.reduce((sum, item) => sum + item.qty, 0);
   const profit = totalAmount - totalModal;
   const receivedValue = parseInt(receivedMoney.replace(/\D/g, '')) || 0;
   const change = receivedValue - totalAmount;
-
-  const handleShortcut = (val) => {
-    const current = parseInt(receivedMoney.replace(/\D/g, '')) || 0;
-    setReceivedMoney(String(current + val));
-  };
 
   const handleCheckout = async () => {
     if (cart.length === 0) {
@@ -132,13 +126,12 @@ const Cashier = ({ navigation }) => {
           <Text style={styles.cartItemPrice}>{formatRupiah(item.selling_price)} / {item.unit || 'pcs'}</Text>
         </View>
         <View style={styles.qtyContainer}>
-          {/* Tombol -step (0.5 atau 1) */}
           <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, -step)}>
-            <Text style={{ color: colors.white, fontSize: 16, fontWeight: '900' }}>{isDecimalUnit ? '−½' : '−'}</Text>
+            <Text style={styles.qtyBtnText}>{isDecimalUnit ? '−½' : '−'}</Text>
           </TouchableOpacity>
           <Text style={styles.qtyText}>{qtyDisplay}</Text>
           <TouchableOpacity style={styles.qtyBtn} onPress={() => updateQty(item.id, step)}>
-            <Text style={{ color: colors.white, fontSize: 16, fontWeight: '900' }}>{isDecimalUnit ? '+½' : '+'}</Text>
+            <Text style={styles.qtyBtnText}>{isDecimalUnit ? '+½' : '+'}</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.subtotalContainer}>
@@ -153,7 +146,7 @@ const Cashier = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      {/* Premium Header */}
+      {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
@@ -161,7 +154,7 @@ const Cashier = ({ navigation }) => {
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle}>Kasir (Ngakasir)</Text>
-            <Text style={styles.headerSub}>{cart.length} Jenis Barang di Keranjang</Text>
+            <Text style={styles.headerSub}>{cart.length} Jenis Barang • {totalItemsCount} Total Items</Text>
           </View>
           <TouchableOpacity 
              onPress={() => cart.length > 0 && Alert.alert('Kosongkan Keranjang', 'Hapus semua isi keranjang?', [{text:'Batal'}, {text:'Ya, Hapus', onPress:()=>setCart([])}])}
@@ -183,110 +176,118 @@ const Cashier = ({ navigation }) => {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <View style={styles.emptyIconContainer}>
-                <Ionicons name="basket-outline" size={64} color={colors.textLight} />
+                <Ionicons name="basket-outline" size={56} color={colors.textLight} />
               </View>
               <Text style={styles.emptyText}>Keranjang Kosong</Text>
-              <Text style={styles.emptySubText}>Belum ada barang yang dipilih</Text>
+              <Text style={styles.emptySubText}>Tekan tombol di bawah untuk memilih barang</Text>
             </View>
           }
         />
 
-        {/* Bottom Panel - inside KAV agar naik bersama saat keyboard muncul */}
+        {/* Bottom Payment Sheet */}
         <View style={styles.bottomPanel}>
           <TouchableOpacity style={styles.addItemBtn} onPress={() => setModalVisible(true)} activeOpacity={0.85}>
-            <Ionicons name="add-circle" size={24} color={colors.primary} style={{ marginRight: 8 }} />
-            <Text style={styles.addItemBtnText}>Pilih Barang (Tambah)</Text>
+            <Ionicons name="add-circle" size={22} color={colors.primary} style={{ marginRight: 8 }} />
+            <Text style={styles.addItemBtnText}>Pilih & Tambah Barang</Text>
           </TouchableOpacity>
 
-          <View style={styles.totalsCard}>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Total Belanja</Text>
-              <Text style={styles.totalValue}>{formatRupiah(totalAmount)}</Text>
-            </View>
-            
-            <View style={styles.paymentSection}>
-               <View style={styles.inputWrapper}>
+          {cart.length > 0 && (
+            <View style={styles.totalsCard}>
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Total Belanja</Text>
+                <Text style={styles.totalValue}>{formatRupiah(totalAmount)}</Text>
+              </View>
+              
+              <View style={styles.paymentSection}>
+                <View style={styles.inputWrapper}>
                   <Text style={styles.currencyPrefix}>Rp</Text>
                   <TextInput
                     style={styles.paymentInput}
                     value={receivedMoney}
                     onChangeText={setReceivedMoney}
                     keyboardType="numeric"
-                    placeholder="0"
+                    placeholder="Masukkan Uang Bayar"
                     placeholderTextColor={colors.textLight}
-                    returnKeyType="done"
                   />
                   {receivedMoney !== '' && (
-                    <TouchableOpacity 
-                      onPress={() => setReceivedMoney('')} 
-                      style={styles.resetInputBtn}
-                    >
-                      <Ionicons name="close-circle" size={24} color={colors.dangerText} />
+                    <TouchableOpacity onPress={() => setReceivedMoney('')} style={styles.resetInputBtn}>
+                      <Ionicons name="close-circle" size={22} color={colors.dangerText} />
                     </TouchableOpacity>
                   )}
-               </View>
+                </View>
 
-               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.shortcutList} contentContainerStyle={styles.shortcutContent}>
+                {/* Preset Cash Buttons */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.presetScroll} contentContainerStyle={styles.presetContent}>
                   <TouchableOpacity 
-                    style={[styles.shortcutBtn, { backgroundColor: colors.primary, borderColor: colors.primary }]} 
+                    style={[styles.presetChip, styles.presetChipExact]} 
                     onPress={() => setReceivedMoney(String(totalAmount))}
                   >
-                    <Text style={[styles.shortcutText, { color: colors.white }]}>Uang Pas</Text>
+                    <Ionicons name="checkmark-done" size={14} color={colors.white} style={{ marginRight: 4 }} />
+                    <Text style={[styles.presetText, { color: colors.white }]}>Uang Pas</Text>
                   </TouchableOpacity>
-                  {SHORTCUTS.map(val => (
-                    <TouchableOpacity key={val} style={styles.shortcutBtn} onPress={() => handleShortcut(val)}>
-                      <Text style={styles.shortcutText}>+{val >= 1000 ? `${val/1000}rb` : val}</Text>
+                  {PRESET_AMOUNTS.map(amt => (
+                    <TouchableOpacity 
+                      key={amt} 
+                      style={styles.presetChip} 
+                      onPress={() => setReceivedMoney(String(amt))}
+                    >
+                      <Text style={styles.presetText}>Rp {amt/1000}rb</Text>
                     </TouchableOpacity>
                   ))}
-               </ScrollView>
-            </View>
+                </ScrollView>
+              </View>
 
-            {receivedMoney !== '' && (
-              <View style={[
-                styles.changeCard,
-                { backgroundColor: change < 0 ? '#FCE4EC' : '#E8F5E9', borderColor: change < 0 ? '#EF9A9A' : '#A5D6A7' }
-              ]}>
-                <View style={styles.changeHeader}>
-                   <Ionicons 
-                    name={change < 0 ? "alert-circle" : "checkmark-circle"} 
-                    size={20} 
-                    color={change < 0 ? colors.dangerText : colors.successText} 
-                  />
-                  <Text style={[styles.changeLabel, { color: change < 0 ? colors.dangerText : colors.successText }]}>
-                    {change < 0 ? 'Uang Kurang' : 'Kembalian'}
+              {receivedMoney !== '' && (
+                <View style={[
+                  styles.changeCard,
+                  { backgroundColor: change < 0 ? '#FCE4EC' : '#E8F5E9', borderColor: change < 0 ? '#EF9A9A' : '#A5D6A7' }
+                ]}>
+                  <View style={styles.changeHeader}>
+                    <Ionicons 
+                      name={change < 0 ? "alert-circle" : "checkmark-circle"} 
+                      size={18} 
+                      color={change < 0 ? colors.dangerText : colors.successText} 
+                    />
+                    <Text style={[styles.changeLabel, { color: change < 0 ? colors.dangerText : colors.successText }]}>
+                      {change < 0 ? 'Uang Masih Kurang' : 'Kembalian'}
+                    </Text>
+                  </View>
+                  <Text style={[styles.changeValue, { color: change < 0 ? colors.dangerText : colors.successText }]}>
+                    {formatRupiah(Math.abs(change))}
                   </Text>
                 </View>
-                <Text style={[styles.changeValue, { color: change < 0 ? colors.dangerText : colors.successText }]}>
-                  {formatRupiah(Math.abs(change))}
-                </Text>
-              </View>
-            )}
-          </View>
+              )}
+            </View>
+          )}
 
           <TouchableOpacity
-            style={[styles.checkoutBtn, (loading || cart.length === 0) && { opacity: 0.6 }]}
+            style={[styles.checkoutBtn, (loading || cart.length === 0) && { opacity: 0.5 }]}
             onPress={handleCheckout}
             disabled={loading || cart.length === 0}
+            activeOpacity={0.85}
           >
-            <Ionicons name="checkmark-done" size={24} color={colors.white} style={{ marginRight: 8 }} />
-            <Text style={styles.checkoutBtnText}>{loading ? 'Menyimpan...' : 'Selesaikan Transaksi'}</Text>
+            <Ionicons name="receipt-outline" size={22} color={colors.white} style={{ marginRight: 8 }} />
+            <Text style={styles.checkoutBtnText}>
+              {loading ? 'Menyimpan Transaksi...' : `Bayar ${totalAmount > 0 ? formatRupiah(totalAmount) : ''}`}
+            </Text>
           </TouchableOpacity>
 
           <View style={{ height: insets.bottom > 0 ? insets.bottom : 12 }} />
         </View>
       </View>
 
+      {/* Item Picker Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent={true}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeaderElegan}>
                <View style={styles.modalHeaderTop}>
                   <TouchableOpacity onPress={() => { setModalVisible(false); setSearchQuery(''); }} style={styles.modalCloseBtn}>
-                     <Ionicons name="close" size={26} color={colors.text} />
+                     <Ionicons name="close" size={24} color={colors.text} />
                   </TouchableOpacity>
                   <View style={styles.modalTitleContainer}>
                      <Text style={styles.modalTitleText}>Pilih Barang</Text>
-                     <Text style={styles.modalSubTitleText}>Cari dan masukkan ke keranjang</Text>
+                     <Text style={styles.modalSubTitleText}>Cari barang untuk dimasukkan ke keranjang</Text>
                   </View>
                </View>
                
@@ -326,7 +327,7 @@ const Cashier = ({ navigation }) => {
                       <Text style={styles.productPrice}>{formatRupiah(item.selling_price)} / {item.unit || 'pcs'}</Text>
                     </View>
                     <View style={styles.productItemRight}>
-                      <View style={[styles.modalStockBadge, isOutOfStock && { backgroundColor: '#FFEBEE' }]}>
+                      <View style={[styles.modalStockBadge, isOutOfStock && { backgroundColor: colors.danger }]}>
                         <Text style={[styles.modalStockText, isOutOfStock && { color: colors.dangerText }]}>
                           {isOutOfStock ? 'Stok Habis' : `Stok: ${item.stock} ${item.unit || 'pcs'}`}
                         </Text>
@@ -354,16 +355,18 @@ const Cashier = ({ navigation }) => {
   );
 };
 
+// ─── STYLES ───────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
 
   header: {
     backgroundColor: colors.cardBg,
     paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 10 : 60,
-    paddingBottom: 20, paddingHorizontal: 20,
-    borderBottomLeftRadius: 30, borderBottomRightRadius: 30,
+    paddingBottom: 18, paddingHorizontal: 20,
+    borderBottomLeftRadius: 28, borderBottomRightRadius: 28,
+    borderWidth: 1, borderColor: colors.border + '50',
     shadowColor: colors.shadow, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1, shadowRadius: 10, elevation: 8,
+    shadowOpacity: 0.06, shadowRadius: 8, elevation: 4,
     marginBottom: 4,
   },
   headerTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
@@ -373,16 +376,17 @@ const styles = StyleSheet.create({
   backBtn: { 
     width: 44, height: 44, borderRadius: 14, 
     alignItems: 'center', justifyContent: 'center', 
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.divider 
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border + '60'
   },
 
   cartList: { padding: 16, paddingBottom: 24 },
 
   cartItem: {
-    flexDirection: 'row', backgroundColor: colors.cardBg, padding: 12,
-    borderRadius: 16, marginBottom: 10, alignItems: 'center',
+    flexDirection: 'row', backgroundColor: colors.cardBg, padding: 14,
+    borderRadius: 18, marginBottom: 10, alignItems: 'center',
+    borderWidth: 1, borderColor: colors.border + '60',
     elevation: 2, shadowColor: colors.shadow, shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05, shadowRadius: 4,
+    shadowOpacity: 0.04, shadowRadius: 5,
   },
   cartItemInfo: { flex: 1, marginRight: 8 },
   cartItemName: { fontSize: 15, fontWeight: '700', color: colors.text, marginBottom: 2 },
@@ -390,78 +394,82 @@ const styles = StyleSheet.create({
   
   qtyContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 8 },
   qtyBtn: { 
-    backgroundColor: colors.primary, width: 30, height: 30, 
-    borderRadius: 8, alignItems: 'center', justifyContent: 'center' 
+    backgroundColor: colors.primary, width: 32, height: 32, 
+    borderRadius: 10, alignItems: 'center', justifyContent: 'center' 
   },
-  qtyText: { fontSize: 16, fontWeight: '800', color: colors.text, minWidth: 22, textAlign: 'center' },
+  qtyBtnText: { color: colors.white, fontSize: 16, fontWeight: '900' },
+  qtyText: { fontSize: 16, fontWeight: '800', color: colors.text, minWidth: 24, textAlign: 'center' },
   
-  subtotalContainer: { alignItems: 'flex-end', gap: 8, minWidth: 80 },
+  subtotalContainer: { alignItems: 'flex-end', gap: 6, minWidth: 80 },
   subtotalText: { fontSize: 14, fontWeight: '800', color: colors.primary },
   removeBtn: { padding: 4 },
 
   emptyContainer: { alignItems: 'center', paddingVertical: 60, gap: 8 },
   emptyIconContainer: { 
-    width: 100, height: 100, borderRadius: 50, 
-    backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', marginBottom: 12 
+    width: 90, height: 90, borderRadius: 45, 
+    backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', marginBottom: 8 
   },
   emptyText: { fontSize: 18, fontWeight: '700', color: colors.textSecondary },
-  emptySubText: { fontSize: 14, color: colors.textLight },
+  emptySubText: { fontSize: 13, color: colors.textLight, textAlign: 'center' },
 
   bottomPanel: {
     backgroundColor: colors.cardBg, paddingHorizontal: 16, paddingTop: 16,
     borderTopLeftRadius: 28, borderTopRightRadius: 28,
-    elevation: 20, shadowColor: colors.shadow, shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.15, shadowRadius: 10,
+    borderWidth: 1, borderColor: colors.border + '50',
+    elevation: 16, shadowColor: colors.shadow, shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.1, shadowRadius: 10,
   },
   addItemBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.surface, borderRadius: 14, paddingVertical: 12,
-    marginBottom: 16, borderWidth: 1.5, borderColor: colors.primary, borderStyle: 'dashed',
+    backgroundColor: colors.surface, borderRadius: 16, paddingVertical: 14,
+    marginBottom: 14, borderWidth: 1.5, borderColor: colors.primary, borderStyle: 'dashed',
   },
-  addItemBtnText: { fontSize: 16, fontWeight: '800', color: colors.primary },
+  addItemBtnText: { fontSize: 15, fontWeight: '800', color: colors.primary },
 
   totalsCard: {
-    backgroundColor: colors.background, borderRadius: 20, padding: 16, marginBottom: 16,
-    borderWidth: 1, borderColor: colors.divider,
+    backgroundColor: colors.background, borderRadius: 20, padding: 16, marginBottom: 14,
+    borderWidth: 1, borderColor: colors.border + '60',
   },
   totalRow: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 16, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.divider,
+    marginBottom: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.divider,
   },
   totalLabel: { fontSize: 15, fontWeight: '700', color: colors.textSecondary },
   totalValue: { fontSize: 24, fontWeight: '900', color: colors.primary },
 
-  paymentSection: { marginBottom: 12 },
+  paymentSection: { marginBottom: 10 },
   inputWrapper: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: colors.cardBg,
     borderRadius: 14, paddingHorizontal: 16, borderWidth: 2, borderColor: colors.primary,
   },
   currencyPrefix: { fontSize: 18, fontWeight: '800', color: colors.primary, marginRight: 8 },
-  paymentInput: { flex: 1, paddingVertical: 12, fontSize: 22, fontWeight: '900', color: colors.text },
+  paymentInput: { flex: 1, paddingVertical: 12, fontSize: 18, fontWeight: '800', color: colors.text },
   resetInputBtn: { padding: 4, marginLeft: 4 },
 
-  shortcutList: { marginTop: 12 },
-  shortcutContent: { gap: 8, paddingRight: 16 },
-  shortcutBtn: {
-    backgroundColor: colors.surface, paddingHorizontal: 14, paddingVertical: 8,
-    borderRadius: 10, borderWidth: 1, borderColor: colors.border,
+  presetScroll: { marginTop: 10 },
+  presetContent: { gap: 8, paddingRight: 16 },
+  presetChip: {
+    backgroundColor: colors.cardBg, paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: 12, borderWidth: 1, borderColor: colors.border,
+    flexDirection: 'row', alignItems: 'center',
   },
-  shortcutText: { fontSize: 14, fontWeight: '700', color: colors.textSecondary },
+  presetChipExact: { backgroundColor: colors.primary, borderColor: colors.primary },
+  presetText: { fontSize: 13, fontWeight: '700', color: colors.textSecondary },
 
   changeCard: {
-    padding: 14, borderRadius: 14, borderWidth: 1.5, marginTop: 4,
+    padding: 12, borderRadius: 14, borderWidth: 1.5, marginTop: 4,
   },
   changeHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 },
-  changeLabel: { fontSize: 13, fontWeight: '700' },
-  changeValue: { fontSize: 22, fontWeight: '900' },
+  changeLabel: { fontSize: 12, fontWeight: '700' },
+  changeValue: { fontSize: 20, fontWeight: '900' },
 
   checkoutBtn: {
-    backgroundColor: colors.successDark, borderRadius: 16, paddingVertical: 16,
+    backgroundColor: colors.primary, borderRadius: 18, paddingVertical: 16,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    elevation: 4, shadowColor: colors.successDark, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 6,
+    elevation: 4, shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25, shadowRadius: 6,
   },
-  checkoutBtnText: { fontSize: 18, fontWeight: '800', color: colors.white },
+  checkoutBtnText: { fontSize: 17, fontWeight: '800', color: colors.white },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { 
@@ -470,15 +478,13 @@ const styles = StyleSheet.create({
   },
   modalHeaderElegan: {
     backgroundColor: colors.cardBg,
-    paddingTop: 20, paddingHorizontal: 20, paddingBottom: 20,
+    paddingTop: 20, paddingHorizontal: 20, paddingBottom: 16,
     borderBottomWidth: 1, borderBottomColor: colors.divider,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05, shadowRadius: 8, elevation: 4,
   },
-  modalHeaderTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  modalHeaderTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
   modalCloseBtn: { 
     width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', 
-    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.divider 
+    backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border + '60' 
   },
   modalTitleContainer: { marginLeft: 14 },
   modalTitleText: { fontSize: 20, fontWeight: '900', color: colors.text },
@@ -488,9 +494,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', 
     backgroundColor: colors.surface, borderRadius: 14, 
     paddingHorizontal: 12, paddingVertical: 10,
-    borderWidth: 1, borderColor: colors.divider,
+    borderWidth: 1, borderColor: colors.border + '60',
   },
-  searchInputModal: { flex: 1, fontSize: 16, color: colors.text, marginLeft: 10 },
+  searchInputModal: { flex: 1, fontSize: 15, color: colors.text, marginLeft: 8 },
 
   modalList: { paddingBottom: 40 },
   productItem: {
