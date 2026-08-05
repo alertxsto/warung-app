@@ -7,7 +7,7 @@
 ![Platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS%20%7C%20Web-blue)
 ![React Native](https://img.shields.io/badge/React%20Native-0.81.5-61dafb)
 ![Expo](https://img.shields.io/badge/Expo-SDK%2054-black)
-![License](https://img.shields.io/badge/license-MIT-green)
+![License](https://img.shields.io/badge/license-Apache--2.0-blue)
 
 ---
 
@@ -119,4 +119,6 @@ Pull request & issue sangat diterima! Untuk perubahan besar, buka issue dulu unt
 
 ## 📄 Lisensi
 
-[MIT](LICENSE) © 2026 [Dwiky Candra](https://github.com/alertxsto)
+[Apache License 2.0](LICENSE) © 2026 [Dwiky Candra](https://github.com/alertxsto)
+
+Dikeluarkan di bawah [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) — lisensi permisif dengan **patent protection** serta kewajiban mencantumkan atribusi dan mencatat perubahan.
